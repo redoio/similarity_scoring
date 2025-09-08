@@ -1,55 +1,46 @@
-# Sentencing Metrics 
+# Sentencing Metrics
 
-This repository contains a **Python implementation** of the sentencing metrics pipeline,
-refactored to follow a **config-driven design** based on Aparna Komarla’s instructions.
-
+This repository provides a Python implementation of a sentencing metrics pipeline.
+It is designed for researchers and developers working with incarceration and sentencing data.
 
 ## Purpose
 
-The project reproduces and extends the **mathematical framework for evaluating incarceration and sentencing outcomes**:
+The project implements a framework for evaluating incarceration and sentencing outcomes.
+It computes key indicators such as:
 
-- **LaTeX to Python)**:Converted LaTeX equations/matrices into clean Python functions (`sentencing_math.py`).
-- **Data pipeline**: Built a **data-driven pipeline** that ingests sentencing datasets 
-  (demographics, current commitments, prior commitments) and produces:
-  - feature vectors,
-  - suitability scores,
-  - offense category counts (violent, nonviolent, other, clash).
+- Individual feature vectors
+- Suitability scores
+- Offense category counts (violent, nonviolent, other, clash)
+- Age- and time-based metrics
 
+## Workflow
 
-## Final Workflow
+The system is organized into three main components:
 
-The final system is simplified into **two main scripts + one math module**:
+- **`config.py`**  
+  Defines file paths, column names, defaults, suitability weights, and offense classification lists.
 
-- **`config.py`**
-  - Single source of truth.
-  - Stores all file paths, column names, defaults, suitability weights, and offense classification lists.
+- **`compute_metrics_v2.py`**  
+  Main execution script. Reads inputs and configuration, computes features and scores for a given ID, 
+  and outputs results in a structured format.
 
-- **`compute_metrics_v2.py`**
-  - Main runner.
-  - Reads inputs and configuration from `config.py`.
-  - Computes features and scores for a given ID.
-  - Skips features gracefully if inputs are missing.
-  - Prints a structured summary of results.
-
-- **`sentencing_math.py`**
-  - Contains the mathematical feature scoring functions.
-
+- **`sentencing_math.py`**  
+  Contains the mathematical feature scoring functions (time, convictions, trends, and descriptive measures).
 
 ## File Overview
 
-- **config.py** – Paths, columns, defaults, weights, and offense lists.  
-- **compute_metrics_v2.py** – Main execution script (single-ID run).  
-- **sentencing_math.py** – Core metrics implementation (time, convictions, trends).  
-- **demographics.csv/xlsx** – Demographics dataset.  
-- **current_commitments.xlsx** – Current commitments dataset.  
-- **prior_commitments.xlsx** – Prior commitments dataset.  
+- `config.py` – Paths, columns, defaults, weights, and offense lists  
+- `compute_metrics_v2.py` – Main execution script (single-ID run)  
+- `sentencing_math.py` – Core metrics implementation (time, convictions, trends)  
+- `demographics.csv/xlsx` – Demographics dataset  
+- `current_commitments.xlsx` – Current commitments dataset  
+- `prior_commitments.xlsx` – Prior commitments dataset  
 
-(Other debug/utility scripts from earlier versions are no longer required.)
-
+(Other debug or utility scripts from earlier development are not required.)
 
 ## Usage
 
-1. Edit `config.py` to point to the correct file paths and update offense lists.
+1. Edit `config.py` to set the correct file paths and update offense lists.
 
 2. Run the metrics script for a given **CDCR ID**:
 
@@ -60,7 +51,7 @@ python compute_metrics_v2.py --cdcr-id 2cf2a233c4
 ### Example Output
 
 ```
-=== Sentencing Metrics (config-driven) ===
+=== Sentencing Metrics ===
 CDCR ID: 2cf2a233c4
 Features: {'age': 0.306, 'desc_nonvio_curr': 1.0, 'desc_nonvio_past': 1.0,
            'freq_violent': 1.0, 'freq_total': 1.0, 'severity_trend': 0.5}
@@ -70,17 +61,14 @@ Counts (prior):   {'violent': 0, 'nonviolent': 13, 'other': 0, 'clash': 0}
 Age used: 40.0
 ```
 
-
 ## Notes
 
-- All **auto-detection biases** have been removed.
-- Offense classification follows explicit rules in `config.py`:
-  - If `nonviolent = "rest"`, all unspecified offenses are treated as nonviolent.
-  - If both violent and nonviolent are explicit lists, leftovers fall into `"other"`.
-  - Codes appearing in multiple categories are flagged as `"clash"`.
-- Offense implications (e.g., attempts) are not included in this version, but can be added later.
-
+- Offense classification is explicit and rule-based (`config.py`):  
+  - If `nonviolent = "rest"`, all unspecified offenses are treated as nonviolent.  
+  - If both violent and nonviolent are explicit lists, leftovers fall into `"other"`.  
+  - Codes appearing in multiple categories are flagged as `"clash"`.  
+- Offense implications (e.g., attempts) can be added in future versions.
 
 ## License
 
-MIT License (c) 2025 
+MIT License (c) 2025
