@@ -1,4 +1,4 @@
-# Sentencing Metrics – Config-Driven Implementation
+# Sentencing Metrics 
 
 This repository contains a **Python implementation** of the sentencing metrics pipeline,
 refactored to follow a **config-driven design** based on Aparna Komarla’s instructions.
@@ -9,7 +9,7 @@ refactored to follow a **config-driven design** based on Aparna Komarla’s inst
 The project reproduces and extends the **mathematical framework for evaluating incarceration and sentencing outcomes**:
 
 - **LaTeX to Python)**:Converted LaTeX equations/matrices into clean Python functions (`sentencing_math.py`).
-- **Data pipeline**: Built a **config-driven data pipeline** that ingests sentencing datasets 
+- **Data pipeline**: Built a **data-driven pipeline** that ingests sentencing datasets 
   (demographics, current commitments, prior commitments) and produces:
   - feature vectors,
   - suitability scores,
