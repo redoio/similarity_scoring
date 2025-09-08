@@ -8,8 +8,8 @@ refactored to follow a **config-driven design** based on Aparna Komarla’s inst
 
 The project reproduces and extends the **mathematical framework for evaluating incarceration and sentencing outcomes**:
 
-- **Milestone 1**: Converted LaTeX equations/matrices into clean Python functions (`sentencing_math.py`).
-- **Milestone 2 (refactored)**: Built a **config-driven data pipeline** that ingests sentencing datasets 
+- **LaTeX to Python)**:Converted LaTeX equations/matrices into clean Python functions (`sentencing_math.py`).
+- **Data pipeline**: Built a **config-driven data pipeline** that ingests sentencing datasets 
   (demographics, current commitments, prior commitments) and produces:
   - feature vectors,
   - suitability scores,
