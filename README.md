@@ -17,7 +17,7 @@ It computes key indicators such as:
 
 The system is organized into three main components:
 
-- **`config.py`**  
+- **`defaults.py`**  
   Defines file paths, column names, defaults, suitability weights, and offense classification lists.
 
 - **`compute_metrics_v2.py`**  
@@ -29,7 +29,7 @@ The system is organized into three main components:
 
 ## File Overview
 
-- `config.py` – Paths, columns, defaults, weights, and offense lists  
+- `defaults.py` – Paths, columns, defaults, weights, and offense lists  
 - `compute_metrics_v2.py` – Main execution script (single-ID run)  
 - `sentencing_math.py` – Core metrics implementation (time, convictions, trends)  
 - `demographics.csv/xlsx` – Demographics dataset  
@@ -40,7 +40,7 @@ The system is organized into three main components:
 
 ## Usage
 
-1. Edit `config.py` to set the correct file paths and update offense lists.
+1. Edit `defaults.py` to set the correct file paths and update offense lists.
 
 2. Run the metrics script for a given **CDCR ID**:
 
@@ -63,7 +63,7 @@ Age used: 40.0
 
 ## Notes
 
-- Offense classification is explicit and rule-based (`config.py`):  
+- Offense classification is explicit and rule-based (`defaults.py`):  
   - If `nonviolent = "rest"`, all unspecified offenses are treated as nonviolent.  
   - If both violent and nonviolent are explicit lists, leftovers fall into `"other"`.  
   - Codes appearing in multiple categories are flagged as `"clash"`.  
