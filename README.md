@@ -20,7 +20,7 @@ The system is organized into three main components:
 - **`defaults.py`**  
   Defines file paths, column names, defaults, suitability weights, and offense classification lists.
 
-- **`compute_metrics_v2.py`**  
+- **`compute_metrics.py`**  
   Main execution script. Reads inputs and configuration, computes features and scores for a given ID, 
   and outputs results in a structured format.
 
@@ -30,7 +30,7 @@ The system is organized into three main components:
 ## File Overview
 
 - `defaults.py` – Paths, columns, defaults, weights, and offense lists  
-- `compute_metrics_v2.py` – Main execution script (single-ID run)  
+- `compute_metrics.py` – Main execution script (single-ID run)  
 - `sentencing_math.py` – Core metrics implementation (time, convictions, trends)  
 - `demographics.csv/xlsx` – Demographics dataset  
 - `current_commitments.xlsx` – Current commitments dataset  
@@ -45,7 +45,7 @@ The system is organized into three main components:
 2. Run the metrics script for a given **CDCR ID**:
 
 ```bash
-python compute_metrics_v2.py --cdcr-id 2cf2a233c4
+python compute_metrics.py --cdcr-id 2cf2a233c4
 ```
 
 ### Example Output
