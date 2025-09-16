@@ -1,6 +1,6 @@
 # compute_metrics_v2.py
 
-# Config-driven sentencing metrics. No auto-detection, skip-if-missing.
+
 
 from __future__ import annotations
 import argparse, re
