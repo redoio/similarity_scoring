@@ -22,7 +22,7 @@ import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 # similarity helpers live in this repo (not in sentencing_math)
-from similarity import cosine_from_named
+from vector_similarity import cosine_from_named
 
 
 def _load_dataframes():
