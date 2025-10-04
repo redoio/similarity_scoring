@@ -1,14 +1,14 @@
 # similarity_scoring
-
-Config-driven utilities to compute named sentencing metrics, score suitability, and compare individuals via cosine similarity.
+Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
+All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are computed on the **intersection of present feature names** only.
 
 ## What this repo contains
-- `config.py` — Paths, column map, defaults, offense lists, **name-based** metric weights.
-- `compute_metrics_v2.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip-if-missing).
-- `sentencing_math.py` — Pure math (no I/O): time vars, proportions, frequency/trend, rehab, suitability (name-based).
-- `vector_similarity.py` — Named-vector helpers: `align_keys`, `cosine_from_named`.
-- `similarity_metrics.py` — Matrix metrics (cosine, euclidean, manhattan, jaccard, dice, hamming, gower).
-- `run_similarity.py` — CLI to print features + suitability; optional cosine sim to a second ID.
+- `config.py` — Paths, column map, defaults, offense lists, **name‑based** metric weights.
+- `compute_metrics.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip‑if‑missing).
+- `sentencing_math.py` — Pure math (no I/O): time decomposition, proportions, frequency/trend, rehab, suitability (name‑based).
+- `vector_similarity.py` — Named‑vector helpers: `align_keys`, `cosine_from_named`.
+- `similarity_metrics.py` — Matrix metrics: cosine, euclidean, manhattan, jaccard, dice, hamming, gower.
+- `run_similarity.py` — CLI: prints features + suitability for an ID; optional cosine vs a second ID.
 
 ## Install
 ```bash
@@ -16,33 +16,105 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -U pip pandas numpy openpyxl
 ```
 
-## Configure (edit `config.py`)
-- Switch data source: `CFG_PROFILE=DEV` for local files, default `PROD` reads GitHub raw URLs.
-- Pin remote data: set `DATA_COMMIT=<git-sha>`.
-- Map columns in `COLS` (any `None` -> that metric is skipped).
-- Provide explicit offense lists in `OFFENSE_LISTS` (unlisted -> `other` by default).
-- Set `METRIC_WEIGHTS` (weights are **dict by name**; add/remove metrics freely).
+## Configure
+Edit `config.py`:
+- `CFG_PROFILE`: set `DEV` for local files; default `PROD` can read GitHub raw URLs.
+- `PATHS`: locations for `demographics`, `current_commitments`, `prior_commitments`.
+- `COLS`: column mappings (any `None` disables that metric).
+- `OFFENSE_LISTS`: explicit code lists for `violent` / `nonviolent` (unlisted → `other` by design).
+- `DEFAULTS`: knobs like `freq_min_rate`/`freq_max_rate`, `trend_years_elapsed`, etc.
+- `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
+
+> **Important:** Frequency metrics require **both** a valid exposure window and `freq_min_rate` / `freq_max_rate` bounds.  
+> Set `COLS['age_years']` to enable the `age` metric; otherwise it is skipped.
 
 ## Quick start (CLI)
+Print features & suitability for a single ID (and optionally compare to another):
 ```bash
 python run_similarity.py --cdcr-id A1234
 python run_similarity.py --cdcr-id A1234 --compare-id B5678
 ```
-Example output:
-```
-=== A1234 ===
-desc_nonvio_curr: 1.000
-...
-Suitability score: 6.420
-(age_value=54.0, pct_completed=40.0, time_outside=215.0)
 
-Cosine similarity (A1234 vs B5678): 0.62
+Generate a worked example with formulas for two specific IDs (and save to `docs/`):
+```powershell
+# Windows PowerShell (use backticks for line breaks)
+$env:CFG_PROFILE = "DEV"
+python .\make_similarity_example.py `
+  --id-a "011756493f" `
+  --id-b "1fe3cd85d0" `
+  --use-weights `
+  --min-shared 2 `
+  --out "docs\README_similarity_example.md"
 ```
+```bash
+# macOS/Linux
+CFG_PROFILE=DEV python ./make_similarity_example.py \
+  --id-a "011756493f" \
+  --id-b "1fe3cd85d0" \
+  --use-weights \
+  --min-shared 2 \
+  --out "docs/README_similarity_example.md"
+```
+
+Find candidate pairs that share ≥2 features (so the example is more informative):
+```bash
+python find_pairs_with_shared_features.py --min-shared 2 --limit 2000
+```
+
+## Formulas (LaTeX)
+- **Cosine (weighted):**  
+  \\[
+  \cos(\theta)=\frac{\sum_i w_i x_i y_i}{\sqrt{\sum_i w_i x_i^2}\,\sqrt{\sum_i w_i y_i^2}}
+  \\]
+  (With \(w_i=1\) if no weights.)
+
+- **Euclidean distance and a unit‑interval similarity:**  
+  \\[
+  d=\sqrt{\sum_i w_i (x_i-y_i)^2},\qquad s=1-\frac{d}{\sqrt{\sum_i w_i}}
+  \\]
+
+- **Tanimoto (continuous “Jaccard” for real‑valued vectors):**  
+  \\[
+  T=\frac{\sum_i w_i x_i y_i}{\sum_i w_i x_i^2+\sum_i w_i y_i^2-\sum_i w_i x_i y_i}
+  \\]
+
+- **Jaccard (binary sets with threshold \(\tau\)):**  
+  \\[
+  J=\frac{|A\cap B|}{|A\cup B|},\quad
+  A=\{i\mid x_i>\tau\},\; B=\{i\mid y_i>\tau\}
+  \\]
+
+> All similarities operate on the **intersection of feature names** only (see `vector_similarity.align_keys`).  
+> This guards against inflated similarity from fabricated zeros.
+
+## Worked example (inline)
+
+A real‑data example (two IDs, shared features, formulas, and multiple similarities). The markdown below is produced by `make_similarity_example.py` and kept here for review.
+
+**ID A:** `011756493f`  |  **ID B:** `1fe3cd85d0`
+### Shared feature space
+- Features in common: **3**  
+- Weights: `METRIC_WEIGHTS`
+
+| feature | x (A) | y (B) | weight |
+|---|---:|---:|---:|
+| `desc_nonvio_curr` | 1.0000 | 0.0000 | 1.0000 |
+| `desc_nonvio_past` | 0.0000 | 0.5000 | 1.0000 |
+| `severity_trend`   | 0.5455 | 0.4773 | 1.0000 |
+
+### Results
+- Cosine similarity: **0.3306**  
+- Euclidean similarity (unit‑interval): **0.3533**  
+- Tanimoto (continuous): **0.1718**  
+- Jaccard (binary, τ=0.0000): **0.3333**
+
+> To generate your own example with different IDs, rerun the script as shown in **Quick start**.  
+> If you need richer shared feature sets, enable additional metrics (e.g., `age`, `freq_*`) in `config.py` so both IDs have them present.
 
 ## Programmatic use
 ```python
 import config as CFG
-import compute_metrics_v2 as cm
+import compute_metrics as cm
 import sentencing_math as sm
 from vector_similarity import cosine_from_named
 
@@ -50,18 +122,17 @@ demo  = cm.read_table(CFG.PATHS["demographics"])
 curr  = cm.read_table(CFG.PATHS["current_commitments"])
 prior = cm.read_table(CFG.PATHS["prior_commitments"])
 
-feats1, aux1 = cm.compute_features("A1234", demo, curr, prior, CFG.OFFENSE_LISTS)
-score = sm.suitability_score_named(feats1, CFG.METRIC_WEIGHTS)
+feats_a, aux_a = cm.compute_features("A1234", demo, curr, prior, CFG.OFFENSE_LISTS)
+feats_b, aux_b = cm.compute_features("B5678", demo, curr, prior, CFG.OFFENSE_LISTS)
 
-feats2, _ = cm.compute_features("B5678", demo, curr, prior, CFG.OFFENSE_LISTS)
-sim = cosine_from_named(feats1, feats2)
+score_a = sm.suitability_score_named(feats_a, CFG.METRIC_WEIGHTS)
+cos_ab  = cosine_from_named(feats_a, feats_b)
+print(score_a, cos_ab)
 ```
-
 ## Notes & tips
-- **Skip-if-missing**: metrics are only added when inputs are valid (no fabricated values).
-- Frequency metrics require: valid exposure window **and** `freq_min_rate`/`freq_max_rate` bounds.
-- Set `COLS['age_years']` to enable the `age` metric; otherwise it's skipped.
+- **Skip‑if‑missing:** metrics are only added when inputs are valid (no silent zero‑fills).
 - For DEV with XLSX files, ensure `openpyxl` is installed.
+- To get richer shared feature sets, enable `age` and `freq_*` by providing the needed inputs/bounds in `config.py`.
 
 ## License
 MIT

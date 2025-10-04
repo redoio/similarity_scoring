@@ -8,8 +8,7 @@ __all__ = [
     "gower",
 ]
 
-# --- numeric (matrix-in, matrix-out) ---
-
+# numeric (matrix-in, matrix-out)
 def cosine(X: np.ndarray) -> np.ndarray:
     X = np.asarray(X, dtype=float)
     Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
@@ -26,8 +25,7 @@ def manhattan(X: np.ndarray) -> np.ndarray:
     X = np.asarray(X, dtype=float)
     return np.sum(np.abs(X[:, None, :] - X[None, :, :]), axis=2)
 
-# --- binary (0/1) ---
-
+# binary (0/1)
 def jaccard_binary(B: np.ndarray) -> np.ndarray:
     B = (np.asarray(B) > 0).astype(np.uint8)
     inter = (B[:, None, :] & B[None, :, :]).sum(axis=2)
@@ -49,33 +47,83 @@ def hamming_binary(B: np.ndarray) -> np.ndarray:
     neq = (B[:, None, :] != B[None, :, :]).sum(axis=2)
     return neq / float(p)
 
-# --- mixed (Gower similarity) ---
-
+# mixed (Gower similarity) — UPDATED to exclude missing per pair
 def gower(df: pd.DataFrame, num_cols: list[str], cat_cols: list[str], bin_cols: list[str]) -> np.ndarray:
     n = len(df)
-    p = len(num_cols) + len(cat_cols) + len(bin_cols)
-    if p == 0:
+    if n == 0:
+        return np.zeros((0, 0), dtype=float)
+
+    # total variable count for fallback when all missing
+    p_total = (len(num_cols) + len(cat_cols) + len(bin_cols))
+    if p_total == 0:
         return np.eye(n, dtype=float)
 
-    S = np.zeros((n, n), dtype=float)
+    S_sum = np.zeros((n, n), dtype=float)   # sum of per-variable similarities
+    W_sum = np.zeros((n, n), dtype=float)   # sum of per-variable availability (weights)
 
+    #  numeric 
     if num_cols:
         sub = df[num_cols].astype(float)
-        rng = sub.max() - sub.min()
-        rng = rng.replace(0, 1.0)
-        Xn = (sub - sub.min()) / rng
-        num_sim = 1.0 - np.abs(Xn.values[:, None, :] - Xn.values[None, :, :])
-        S += np.nan_to_num(num_sim.sum(axis=2))
+        # ranges ignoring NaNs; zero range treated as 1 to avoid divide-by-zero
+        col_min = sub.min(skipna=True)
+        col_max = sub.max(skipna=True)
+        rng = (col_max - col_min).replace(0, 1.0)
 
+        # normalize per column: (x - min) / range; NaNs preserved
+        Xn = (sub - col_min) / rng
+        Xv = Xn.values
+        M = ~np.isnan(Xv)
+
+        # pairwise absolute differences for available pairs only
+        # sim = 1 - |xi - xj|
+        for j in range(Xv.shape[1]):
+            x = Xv[:, j][:, None]  # n x 1
+            m = M[:, j][:, None]   # n x 1 mask
+            # broadcast; invalid where either missing
+            diff = np.abs(x - x.T)
+            avail = (m & m.T).astype(float)
+            sim = 1.0 - diff
+            sim[avail == 0] = 0.0
+            S_sum += sim
+            W_sum += avail
+
+    #  categorical 
     if cat_cols:
-        Xc = df[cat_cols].astype("category").apply(lambda s: s.cat.codes)
-        cat_sim = (Xc.values[:, None, :] == Xc.values[None, :, :]).sum(axis=2)
-        S += cat_sim
+        # preserve NaN; don't count NaN==NaN as a match
+        Xc = df[cat_cols].astype(object).values
+        for j in range(Xc.shape[1]):
+            col = Xc[:, j]
+            m = ~pd.isna(col).to_numpy()
+            a = col[:, None]
+            b = col[None, :]
+            avail = ((m[:, None]) & (m[None, :])).astype(float)
+            sim = (a == b).astype(float)
+            sim[avail == 0] = 0.0  # if either missing, no contribution
+            S_sum += sim
+            W_sum += avail
 
+    #  binary 
     if bin_cols:
-        Xb = df[bin_cols].fillna(0).astype(int).values
-        # XNOR per bit (equal -> 1, different -> 0)
-        bin_sim = 1 - (Xb[:, None, :] ^ Xb[None, :, :])
-        S += bin_sim.sum(axis=2)
+        # keep NaNs; exclude them from availability
+        Xb = df[bin_cols].to_numpy()
+        Mb = ~pd.isna(df[bin_cols]).to_numpy()
 
-    return S / float(p)
+        # For each binary column: equal -> 1, different -> 0; exclude missing pairs
+        for j in range(Xb.shape[1]):
+            col = Xb[:, j]
+            m = Mb[:, j]
+            a = col[:, None]
+            b = col[None, :]
+            avail = ((m[:, None]) & (m[None, :])).astype(float)
+            sim = (a == b).astype(float)
+            sim[avail == 0] = 0.0
+            S_sum += sim
+            W_sum += avail
+
+    # Avoid divide-by-zero: where W_sum==0, similarity=1 on diagonal else 0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        S = np.divide(S_sum, W_sum, out=np.zeros_like(S_sum), where=(W_sum > 0))
+
+    # ensure diagonals are 1.0 when any variables exist
+    np.fill_diagonal(S, 1.0)
+    return S
