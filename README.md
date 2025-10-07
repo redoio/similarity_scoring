@@ -62,27 +62,38 @@ python find_pairs_with_shared_features.py --min-shared 2 --limit 2000
 ```
 
 ## Formulas (LaTeX)
+
 - **Cosine (weighted):**  
-  \\[
-  \cos(\theta)=\frac{\sum_i w_i x_i y_i}{\sqrt{\sum_i w_i x_i^2}\,\sqrt{\sum_i w_i y_i^2}}
-  \\]
-  (With \(w_i=1\) if no weights.)
 
-- **Euclidean distance and a unit‑interval similarity:**  
-  \\[
-  d=\sqrt{\sum_i w_i (x_i-y_i)^2},\qquad s=1-\frac{d}{\sqrt{\sum_i w_i}}
-  \\]
+$$
+\cos(\theta) =
+\frac{\sum_i w_i x_i y_i}
+     {\sqrt{\sum_i w_i x_i^2} \cdot \sqrt{\sum_i w_i y_i^2}}
+$$
 
-- **Tanimoto (continuous “Jaccard” for real‑valued vectors):**  
-  \\[
-  T=\frac{\sum_i w_i x_i y_i}{\sum_i w_i x_i^2+\sum_i w_i y_i^2-\sum_i w_i x_i y_i}
-  \\]
+(With \( w_i = 1 \) if no weights.)
 
-- **Jaccard (binary sets with threshold \(\tau\)):**  
-  \\[
-  J=\frac{|A\cap B|}{|A\cup B|},\quad
-  A=\{i\mid x_i>\tau\},\; B=\{i\mid y_i>\tau\}
-  \\]
+- **Euclidean distance and a unit-interval similarity:**
+
+$$
+d = \sqrt{\sum_i w_i (x_i - y_i)^2}, \quad
+s = 1 - \frac{d}{\sqrt{\sum_i w_i}}
+$$
+
+- **Tanimoto (continuous “Jaccard” for real-valued vectors):**  
+
+$$
+T = \frac{\sum_i w_i x_i y_i}
+         {\sum_i w_i x_i^2 + \sum_i w_i y_i^2 - \sum_i w_i x_i y_i}
+$$
+
+- **Jaccard (binary sets with threshold \(	au\)):**  
+
+$$
+J = \frac{|A \cap B|}{|A \cup B|}, \quad
+A = \{i \mid x_i > \tau\}, \quad
+B = \{i \mid y_i > \tau\}
+$$
 
 > All similarities operate on the **intersection of feature names** only (see `vector_similarity.align_keys`).  
 > This guards against inflated similarity from fabricated zeros.
@@ -129,6 +140,7 @@ score_a = sm.suitability_score_named(feats_a, CFG.METRIC_WEIGHTS)
 cos_ab  = cosine_from_named(feats_a, feats_b)
 print(score_a, cos_ab)
 ```
+
 ## Notes & tips
 - **Skip‑if‑missing:** metrics are only added when inputs are valid (no silent zero‑fills).
 - For DEV with XLSX files, ensure `openpyxl` is installed.
