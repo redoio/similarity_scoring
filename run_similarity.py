@@ -7,30 +7,27 @@ Uses the canonical, library-only modules:
   - config.py                (PATHS, COLS, OFFENSE_LISTS, METRIC_WEIGHTS)
   - compute_metrics.py       (read_table, compute_features)
   - sentencing_math.py       (suitability_score_named)
-  - similarity.py            (cosine_from_named)  ← lives in this repo
+  - vector_similarity.py     (cosine_from_named)  ← lives in this repo
 
 Example:
   python run_similarity.py --cdcr-id A1234
-  python run_similarity.py --cdcr-id A1234 --compare-id B5678
+  python run_similarity.py --cdcr-id A1234 --compare-id B5678 
 """
 
 from __future__ import annotations
 import argparse
 from typing import Dict, Any
-
 import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 # similarity helpers live in this repo (not in sentencing_math)
 from vector_similarity import cosine_from_named
 
-
 def _load_dataframes():
     demo = cm.read_table(CFG.PATHS["demographics"])
     curr = cm.read_table(CFG.PATHS["current_commitments"])
     prior = cm.read_table(CFG.PATHS["prior_commitments"])
     return demo, curr, prior
-
 
 def _compute_named_features(cdcr_id: str,
                             demo,
@@ -39,7 +36,6 @@ def _compute_named_features(cdcr_id: str,
     lists = getattr(CFG, "OFFENSE_LISTS", {"violent": [], "nonviolent": []})
     feats, aux = cm.compute_features(cdcr_id, demo, curr, prior, lists)
     return feats, aux
-
 
 def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     print(f"\n=== {cdcr_id} ===")
@@ -56,7 +52,6 @@ def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     # optional quick aux preview
     if "age_value" in aux:
         print(f"(age_value={aux['age_value']}, pct_completed={aux.get('pct_completed')}, time_outside={aux.get('time_outside')})")
-
 
 def main():
     p = argparse.ArgumentParser(description="Compute features, suitability, and similarity.")
