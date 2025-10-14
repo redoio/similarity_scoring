@@ -17,11 +17,13 @@ Example:
 from __future__ import annotations
 import argparse
 from typing import Dict, Any
-import config as CFG
-import compute_metrics as cm
-import sentencing_math as sm
+
+from . import config as CFG
+from . import compute_metrics as cm
+from . import sentencing_math as sm
+
 # similarity helpers live in this repo (not in sentencing_math)
-from vector_similarity import cosine_from_named
+from .vector_similarity import cosine_from_named
 
 def _load_dataframes():
     demo = cm.read_table(CFG.PATHS["demographics"])

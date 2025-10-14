@@ -1,0 +1,28 @@
+[build-system]
+# This tells pip how to build your package
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Basic info
+name = "similarity-scoring"                    # package name (hyphen OK)
+version = "0.1.0"                              # must match __version__ in __init__.py
+description = "Similarity scoring utilities for metrics, vectors, and sentencing math."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "redoio", email = "dev@redo.io" }]
+
+# Dependencies (list what your code actually imports)
+dependencies = [
+  "numpy>=1.23,<3",
+  "pandas>=1.5,<3"
+]
+
+[project.urls]
+Homepage = "https://github.com/redoio/similarity_scoring"
+
+
+# Tell setuptools where to find the package
+[tool.setuptools.packages.find]
+where = ["."]

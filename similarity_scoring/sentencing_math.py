@@ -15,7 +15,7 @@ from math import sqrt
 
 # Optional config hook (safe)
 try:
-    import config as CFG  # type: ignore
+    from . import config as CFG  # type: ignore
 except Exception:
     CFG = None  # type: ignore
 
