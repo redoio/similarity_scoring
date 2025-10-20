@@ -3,6 +3,8 @@ from .similarity_metrics import (
     cosine, euclidean, manhattan,
     jaccard_binary, dice_binary, hamming_binary, gower,
 )
+from .compute_metrics import compute_features
+from .sentencing_math import suitability_score_named
 
 __all__ = [
     # 1-D / named-vector helpers
@@ -11,4 +13,8 @@ __all__ = [
     "cosine", "euclidean", "manhattan",
     "jaccard_binary", "dice_binary", "hamming_binary",
     "gower",
+     # feature + scoring
+    "compute_features", "suitability_score_named",
 ]
+
+__version__ = "0.1.0"
