@@ -1,0 +1,4 @@
+venv
+.venv
+\venv
+similarity_scoring/__pycache__
