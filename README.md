@@ -1,4 +1,4 @@
-# Similarity Scoring, Assessment and Analysis
+# similarity_scoring
 Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
 All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are computed on the **intersection of present feature names** only.
 
@@ -6,7 +6,7 @@ All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defa
 - `config.py` — Paths, column map, defaults, offense lists, **name‑based** metric weights.
 - `compute_metrics.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip‑if‑missing).
 - `sentencing_math.py` — Pure math (no I/O): time decomposition, proportions, frequency/trend, rehab, suitability (name‑based).
-- `vector_similarity.py` — Named‑vector helpers: `align_keys`, `cosine_from_named`.
+- `vector_similarity.py` — Named-vector helpers: align_keys, cosine_from_named, cosine_from_named_weighted.
 - `similarity_metrics.py` — Matrix metrics: cosine, euclidean, manhattan, jaccard, dice, hamming, gower.
 - `run_similarity.py` — CLI: prints features + suitability for an ID; optional cosine vs a second ID.
 
@@ -40,8 +40,8 @@ Generate a worked example with formulas for two specific IDs (and save to `docs/
 # Windows PowerShell (use backticks for line breaks)
 $env:CFG_PROFILE = "DEV"
 python .\make_similarity_example.py `
-  --id-a "011756493f" `
-  --id-b "1fe3cd85d0" `
+  --id-a "00173d8423" `
+  --id-b "0029029e5b" `
   --use-weights `
   --min-shared 2 `
   --out "docs\README_similarity_example.md"
@@ -49,8 +49,8 @@ python .\make_similarity_example.py `
 ```bash
 # macOS/Linux
 CFG_PROFILE=DEV python ./make_similarity_example.py \
-  --id-a "011756493f" \
-  --id-b "1fe3cd85d0" \
+  --id-a "00173d8423" \
+  --id-b "0029029e5b" \
   --use-weights \
   --min-shared 2 \
   --out "docs/README_similarity_example.md"
@@ -102,21 +102,21 @@ $$
 
 A real‑data example (two IDs, shared features, formulas, and multiple similarities). The markdown below is produced by `make_similarity_example.py` and kept here for review.
 
-**ID A:** `011756493f`  |  **ID B:** `1fe3cd85d0`
-### Shared feature space
-- Features in common: **3**  
-- Weights: `METRIC_WEIGHTS`
+**ID A:** `00173d8423`  |  **ID B:** `0029029e5b`
+## Shared feature space
+- Features in common: **3**
+- Weights: METRIC_WEIGHTS
 
 | feature | x (A) | y (B) | weight |
 |---|---:|---:|---:|
-| `desc_nonvio_curr` | 1.0000 | 0.0000 | 1.0000 |
-| `desc_nonvio_past` | 0.0000 | 0.5000 | 1.0000 |
-| `severity_trend`   | 0.5455 | 0.4773 | 1.0000 |
+| `desc_nonvio_curr` | 0.5000 | 0.0000 | 1.0000 |
+| `desc_nonvio_past` | 1.0000 | 0.0000 | 1.0000 |
+| `severity_trend` | 0.4773 | 0.5000 | 1.0000 |
 
-### Results
-- Cosine similarity: **0.3306**  
-- Euclidean similarity (unit‑interval): **0.3533**  
-- Tanimoto (continuous): **0.1718**  
+## Results
+- Cosine similarity: **0.3926**
+- Euclidean similarity (unit-interval): **0.3544**
+- Tanimoto (continuous): **0.1602**
 - Jaccard (binary, τ=0.0000): **0.3333**
 
 > To generate your own example with different IDs, rerun the script as shown in **Quick start**.  
