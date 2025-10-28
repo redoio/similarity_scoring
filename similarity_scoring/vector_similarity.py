@@ -1,4 +1,4 @@
-# similarity_scoring/vector_similarity.py
+# vector_similarity.py
 from __future__ import annotations
 from typing import Dict, Sequence, List, Optional
 import math
@@ -7,7 +7,8 @@ __all__ = [
     "align_keys",
     "cosine",
     "cosine_from_named",
-    "cosine_from_named_weighted",  # new (optional)
+    "cosine_from_named_weighted",
+    "euclidean_from_named",   # <-- added
 ]
 
 def align_keys(a: Dict[str, float], b: Dict[str, float]) -> list[str]:
@@ -57,7 +58,7 @@ def cosine_from_named(a: Dict[str, float], b: Dict[str, float]) -> float:
     vb = [b.get(k) for k in keys]
     return cosine(ua, vb)
 
-#  Optional: weighted cosine with explicit weights (no silent defaults) 
+# Optional: weighted cosine with explicit weights (no silent defaults)
 def cosine_from_named_weighted(
     a: Dict[str, float],
     b: Dict[str, float],
@@ -74,11 +75,8 @@ def cosine_from_named_weighted(
     if not keys:
         return 0.0
 
-    # Build weighted vectors by multiplying sqrt(weights) into each side
-    # so standard cosine(u',v') equals weighted cosine.
-    w_sqrt = []
-    ua = []
-    vb = []
+    ua: List[float] = []
+    vb: List[float] = []
     for k in keys:
         x = _to_float_or_none(a.get(k))
         y = _to_float_or_none(b.get(k))
@@ -87,11 +85,31 @@ def cosine_from_named_weighted(
         w = float(weights[k])
         if w <= 0.0 or math.isnan(w) or math.isinf(w):
             continue
-        w_sqrt_val = math.sqrt(w)
-        w_sqrt.append(w_sqrt_val)
-        ua.append(x * w_sqrt_val)
-        vb.append(y * w_sqrt_val)
+        w_sqrt = math.sqrt(w)
+        ua.append(x * w_sqrt)
+        vb.append(y * w_sqrt)
 
     if not ua:
         return 0.0
     return cosine(ua, vb)
+
+def euclidean_from_named(a: Dict[str, float], b: Dict[str, float]) -> float:
+    """
+    Euclidean distance over intersecting keys only; ignores NaN/inf values.
+    Returns 0.0 if no finite overlap.
+    """
+    keys = align_keys(a, b)
+    if not keys:
+        return 0.0
+    diffsq = 0.0
+    any_pair = False
+    for k in keys:
+        x = _to_float_or_none(a.get(k))
+        y = _to_float_or_none(b.get(k))
+        if x is None or y is None:
+            continue
+        diffsq += (x - y) ** 2
+        any_pair = True
+    if not any_pair:
+        return 0.0
+    return math.sqrt(diffsq)
