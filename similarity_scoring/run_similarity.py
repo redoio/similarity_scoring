@@ -16,11 +16,12 @@ Examples:
 
 from __future__ import annotations
 import argparse
+import math
 from typing import Dict, Any, Tuple
+
 import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
-# similarity helpers live in this repo (not in sentencing_math)
 from vector_similarity import cosine_from_named
 
 
@@ -43,15 +44,16 @@ def _compute_named_features(cdcr_id: str,
 def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     print(f"\n=== {cdcr_id} ===")
     if not feats:
-        print("No computable features (inputs likely missing).")
+        print("No computable features (inputs likely missing or all offenses → 'other').")
         return
 
     # deterministic order for readability
     for k in sorted(feats.keys()):
+        v = feats[k]
         try:
-            print(f"{k}: {feats[k]:.3f}")
+            print(f"{k}: {float(v):.3f}")
         except Exception:
-            print(f"{k}: {feats[k]}")
+            print(f"{k}: {v}")
 
     # Suitability (name-based, uses only present features)
     weights = getattr(CFG, "METRIC_WEIGHTS", getattr(CFG, "WEIGHTS_10D", {}))
@@ -59,12 +61,26 @@ def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
 
     # get full parts for transparency (ratio, numerator, denominator)
     ratio, num, denom = sm.suitability_score_named(
-        feats, weights=weights, directions=directions, return_parts=True
+        feats,
+        weights=weights,
+        directions=directions,
+        return_parts=True,
     )  # type: ignore[assignment]
 
-    print(f"Suitability score: {ratio:.3f}")
-    print(f"  ├─ numerator (Σ w·m): {num:.3f}")
-    print(f"  └─ out_of (denominator): {denom:.3f}")
+    # NA / not-evaluable guard
+    no_denom = (
+        denom is None
+        or (isinstance(denom, float) and (math.isnan(denom) or denom == 0.0))
+    )
+
+    if ratio is None or (isinstance(ratio, float) and math.isnan(ratio)) or no_denom:
+        print("Suitability score: NOT EVALUATED (no offense-based metrics / out_of=0)")
+        print(f"  ├─ numerator (Σ w·m): {num}")
+        print(f"  └─ out_of (denominator): {denom}")
+    else:
+        print(f"Suitability score: {float(ratio):.3f}")
+        print(f"  ├─ numerator (Σ w·m): {float(num):.3f}")
+        print(f"  └─ out_of (denominator): {float(denom):.3f}")
 
     # optional quick aux preview
     if aux:
