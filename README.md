@@ -1,6 +1,6 @@
 # similarity_scoring
 Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
-All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are computed on the **intersection of present feature names** only.
+All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are always computed on the **intersection of present feature names**.
 
 ## What this repo contains
 - `config.py` — Paths, column map, defaults, offense lists, **name‑based** metric weights.
@@ -25,8 +25,8 @@ Edit `config.py`:
 - `DEFAULTS`: knobs like `freq_min_rate`/`freq_max_rate`, `trend_years_elapsed`, etc.
 - `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
 
-> **Important:** Frequency metrics require **both** a valid exposure window and `freq_min_rate` / `freq_max_rate` bounds.  
-> Set `COLS['age_years']` to enable the `age` metric; otherwise it is skipped.
+> **Important:** Frequency metrics require **both** a valid exposure window and and bounds in config.
+> Set `COLS['age_years']` to enable the `age` metric.
 
 ## Quick start (CLI)
 Print features & suitability for a single ID (and optionally compare to another):
@@ -118,27 +118,66 @@ A real‑data example (two IDs, shared features, formulas, and multiple similari
 - Euclidean similarity (unit-interval): **0.3544**
 - Tanimoto (continuous): **0.1602**
 - Jaccard (binary, τ=0.0000): **0.3333**
+- Suitability A: **0.6591** (numerator=1.9773, denominator/out_of=3.0)
+- Suitability B: **0.1667** (numerator=0.5000, denominator/out_of=3.0)
 
 > To generate your own example with different IDs, rerun the script as shown in **Quick start**.  
 > If you need richer shared feature sets, enable additional metrics (e.g., `age`, `freq_*`) in `config.py` so both IDs have them present.
 
 ## Programmatic use
 ```python
+import math
 import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 from vector_similarity import cosine_from_named
+from similarity_metrics import (
+    euclidean_distance_named,
+    jaccard_on_keys,
+    tanimoto_from_named,
+)
 
+# load source tables
 demo  = cm.read_table(CFG.PATHS["demographics"])
 curr  = cm.read_table(CFG.PATHS["current_commitments"])
 prior = cm.read_table(CFG.PATHS["prior_commitments"])
 
-feats_a, aux_a = cm.compute_features("A1234", demo, curr, prior, CFG.OFFENSE_LISTS)
-feats_b, aux_b = cm.compute_features("B5678", demo, curr, prior, CFG.OFFENSE_LISTS)
+ids = demo[CFG.COLS["id"]].astype(str).dropna().unique().tolist()[:2]
 
-score_a = sm.suitability_score_named(feats_a, CFG.METRIC_WEIGHTS)
-cos_ab  = cosine_from_named(feats_a, feats_b)
-print(score_a, cos_ab)
+feats_a, aux_a = cm.compute_features(ids[0], demo, curr, prior, CFG.OFFENSE_LISTS)
+feats_b, aux_b = cm.compute_features(ids[1], demo, curr, prior, CFG.OFFENSE_LISTS)
+
+weights    = getattr(CFG, "METRIC_WEIGHTS", {})
+directions = getattr(CFG, "METRIC_DIRECTIONS", {})
+
+# suitability – returns None/NaN if no evaluable metrics
+score_a, num_a, den_a = sm.suitability_score_named(
+    feats_a,
+    weights=weights,
+    directions=directions,
+    return_parts=True,
+    none_if_no_metrics=True,
+)
+score_b, num_b, den_b = sm.suitability_score_named(
+    feats_b,
+    weights=weights,
+    directions=directions,
+    return_parts=True,
+    none_if_no_metrics=True,
+)
+
+# similarity over intersection of present features
+cos_ab   = cosine_from_named(feats_a, feats_b)
+euc_dist = euclidean_distance_named(feats_a, feats_b, weights=weights)
+tan_ab   = tanimoto_from_named(feats_a, feats_b, weights=weights)
+jac_ab   = jaccard_on_keys(feats_a, feats_b, thresh=0.0)
+
+print("cosine:", cos_ab)
+print("euclidean_distance:", euc_dist)
+print("tanimoto:", tan_ab)
+print("jaccard_on_keys:", jac_ab)
+print("A suitability:", score_a, num_a, den_a)
+print("B suitability:", score_b, num_b, den_b)
 ```
 
 ## Notes & tips
