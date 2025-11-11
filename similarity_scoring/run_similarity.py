@@ -56,7 +56,7 @@ def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
             print(f"{k}: {v}")
 
     # Suitability (name-based, uses only present features)
-    weights = getattr(CFG, "METRIC_WEIGHTS", getattr(CFG, "WEIGHTS_10D", {}))
+    weights = getattr(CFG, "METRIC_WEIGHTS", {})
     directions = getattr(CFG, "METRIC_DIRECTIONS", {})
 
     # get full parts for transparency (ratio, numerator, denominator)
