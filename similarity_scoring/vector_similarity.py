@@ -58,6 +58,11 @@ def cosine_from_named(a: Dict[str, float], b: Dict[str, float]) -> float:
     vb = [b.get(k) for k in keys]
     return cosine(ua, vb)
 
+def euclidean_distance_named(a, b, weights=None):
+    # thin wrapper to keep backward import location if needed
+    from .similarity_metrics import euclidean_distance_named as _edn
+    return _edn(a, b, weights=weights)
+
 # Optional: weighted cosine with explicit weights (no silent defaults)
 def cosine_from_named_weighted(
     a: Dict[str, float],
