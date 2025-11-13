@@ -1,4 +1,4 @@
-# Introduction
+# similarity_scoring
 Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
 All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are always computed on the **intersection of present feature names**.
 
@@ -77,7 +77,7 @@ $$
 
 $$
 d = \sqrt{\sum_i w_i (x_i - y_i)^2}, \quad
-s = 1 - \frac{d}{\sqrt{\sum_i w_i}}
+s = \frac{1}{1 + d}
 $$
 
 - **Tanimoto (continuous “Jaccard” for real-valued vectors):**  
@@ -115,7 +115,7 @@ A real‑data example (two IDs, shared features, formulas, and multiple similari
 
 ## Results
 - Cosine similarity: **0.3926**
-- Euclidean similarity (unit-interval): **0.3544**
+- Euclidean similarity (unit-interval): **0.4721**
 - Tanimoto (continuous): **0.1602**
 - Jaccard (binary, τ=0.0000): **0.3333**
 - Suitability A: **0.6591** (numerator=1.9773, denominator/out_of=3.0)
@@ -172,8 +172,13 @@ euc_dist = euclidean_distance_named(feats_a, feats_b, weights=weights)
 tan_ab   = tanimoto_from_named(feats_a, feats_b, weights=weights)
 jac_ab   = jaccard_on_keys(feats_a, feats_b, thresh=0.0)
 
+# convert distance -> similarity if you want a similarity score
+euc_sim = 1.0 / (1.0 + euc_dist)  # in [0, 1]
+
+
 print("cosine:", cos_ab)
 print("euclidean_distance:", euc_dist)
+print("euclidean_similarity:", euc_sim)
 print("tanimoto:", tan_ab)
 print("jaccard_on_keys:", jac_ab)
 print("A suitability:", score_a, num_a, den_a)
