@@ -27,8 +27,8 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 from pandas.tseries.offsets import DateOffset
-import config as CFG
-import sentencing_math as sm
+from . import config as CFG
+from . import sentencing_math as sm
 from offense_helpers import classify_offense
 
 # Small config helpers
