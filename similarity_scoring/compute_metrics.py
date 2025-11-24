@@ -29,7 +29,7 @@ import pandas as pd
 from pandas.tseries.offsets import DateOffset
 from . import config as CFG
 from . import sentencing_math as sm
-from offense_helpers import classify_offense
+from similarity_scoring.offense_helpers import classify_offense
 
 # Small config helpers
 def _cfg_col(name: str) -> Optional[str]:
