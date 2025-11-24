@@ -1,4 +1,4 @@
-# similarity_scoring
+# Introduction
 Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
 All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are always computed on the **intersection of present feature names**.
 
