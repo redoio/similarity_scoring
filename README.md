@@ -1,4 +1,4 @@
-# Introduction
+# similarity_scoring
 Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
 All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are always computed on the **intersection of present feature names**.
 
@@ -7,7 +7,12 @@ All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defa
 - `compute_metrics.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip‑if‑missing).
 - `sentencing_math.py` — Pure math (no I/O): time decomposition, proportions, frequency/trend, rehab, suitability (name‑based).
 - `vector_similarity.py` — Named-vector helpers: align_keys, cosine_from_named, cosine_from_named_weighted.
-- `similarity_metrics.py` — Matrix metrics: cosine, euclidean, manhattan, jaccard, dice, hamming, gower.
+- `similarity_metrics.py` — Matrix metrics (cosine, euclidean, manhattan, jaccard_binary,
+    dice_binary hamming_binary) **and** named-vector similarities:
+    cosine_similarity_named, euclidean_distance_named, euclidean_similarity_named,
+    tanimoto_similarity_named, tanimoto_distance_named, jaccard_on_keys.
+    Implements the global MIN_OVERLAP rule, the “all-zero → similarity=1” rule,
+    and full skip-if-missing behavior for named metrics.
 - `run_similarity.py` — CLI: prints features + suitability for an ID; optional cosine vs a second ID.
 
 ## Install
@@ -22,14 +27,19 @@ Edit `config.py`:
 - `PATHS`: locations for `demographics`, `current_commitments`, `prior_commitments`.
 - `COLS`: column mappings (any `None` disables that metric).
 - `OFFENSE_LISTS`: explicit code lists for `violent` / `nonviolent` (unlisted → `other` by design).
-- `DEFAULTS`: knobs like `freq_min_rate`/`freq_max_rate`, `trend_years_elapsed`, etc.
+- `DEFAULTS`: knobs like `freq_min_rate` / `freq_max_rate`, `trend_years_elapsed`,
+  `DEFAULT_TIME_ELAPSED_YEARS`, etc.
+- `MIN_OVERLAP_FOR_SIMILARITY`: minimum number of overlapping, non-missing features
+   required to compute cosine / Euclidean / Tanimoto / Jaccard-on-keys (default = 3).
 - `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
+- `METRIC_DIRECTIONS`: +1 / -1 per metric (e.g. `desc_nonvio_*` = +1, `severity_trend` = -1).
 
 > **Important:** Frequency metrics require **both** a valid exposure window and and bounds in config.
 > Set `COLS['age_years']` to enable the `age` metric.
 
 ## Quick start (CLI)
-Print features & suitability for a single ID (and optionally compare to another):
+Print features & suitability for a single ID, and optionally compare two IDs with
+cosine / Euclidean / Tanimoto / Jaccard-on-keys:
 ```bash
 python run_similarity.py --cdcr-id A1234
 python run_similarity.py --cdcr-id A1234 --compare-id B5678
@@ -111,15 +121,16 @@ A real‑data example (two IDs, shared features, formulas, and multiple similari
 |---|---:|---:|---:|
 | `desc_nonvio_curr` | 0.5000 | 0.0000 | 1.0000 |
 | `desc_nonvio_past` | 1.0000 | 0.0000 | 1.0000 |
-| `severity_trend` | 0.4773 | 0.5000 | 1.0000 |
+| `severity_trend` | 0.4773 | 0.0000 | 1.0000 |
 
 ## Results
-- Cosine similarity: **0.3926**
-- Euclidean similarity (unit-interval): **0.4721**
-- Tanimoto (continuous): **0.1602**
-- Jaccard (binary, τ=0.0000): **0.3333**
-- Suitability A: **0.6591** (numerator=1.9773, denominator/out_of=3.0)
-- Suitability B: **0.1667** (numerator=0.5000, denominator/out_of=3.0)
+- Cosine similarity: **NA**
+- Euclidean similarity (unit-interval): **0.4709** (distance d = 1.1236)
+- Tanimoto (continuous): **0.0000**
+- Jaccard (binary, τ=0.0000): **NA**
+- Suitability A: **0.8058** (numerator=1.6116, denominator/out_of=2.0000)
+- Suitability B: **0.0000** (numerator=0.0000, denominator/out_of=2.0000)
+  - If score = NA and denominator = NA → this ID had **no evaluable metrics**.
 
 > To generate your own example with different IDs, rerun the script as shown in **Quick start**.  
 > If you need richer shared feature sets, enable additional metrics (e.g., `age`, `freq_*`) in `config.py` so both IDs have them present.
@@ -127,21 +138,30 @@ A real‑data example (two IDs, shared features, formulas, and multiple similari
 ## Programmatic use
 ```python
 import math
+
 import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 from vector_similarity import cosine_from_named
 from similarity_metrics import (
     euclidean_distance_named,
+    euclidean_similarity_named,
     jaccard_on_keys,
-    tanimoto_from_named,
+    tanimoto_from_named,   # backwards-compatible alias → tanimoto_similarity_named
 )
 
-# load source tables
+# Show current MIN_OVERLAP for quick debugging
+MIN_OVERLAP = getattr(CFG, "MIN_OVERLAP_FOR_SIMILARITY", 3)
+print(f"MIN_OVERLAP_FOR_SIMILARITY = {MIN_OVERLAP}")
+
+
+# Load source tables
+
 demo  = cm.read_table(CFG.PATHS["demographics"])
 curr  = cm.read_table(CFG.PATHS["current_commitments"])
 prior = cm.read_table(CFG.PATHS["prior_commitments"])
 
+# Take the first two IDs as a simple smoke pair
 ids = demo[CFG.COLS["id"]].astype(str).dropna().unique().tolist()[:2]
 
 feats_a, aux_a = cm.compute_features(ids[0], demo, curr, prior, CFG.OFFENSE_LISTS)
@@ -150,7 +170,9 @@ feats_b, aux_b = cm.compute_features(ids[1], demo, curr, prior, CFG.OFFENSE_LIST
 weights    = getattr(CFG, "METRIC_WEIGHTS", {})
 directions = getattr(CFG, "METRIC_DIRECTIONS", {})
 
-# suitability – returns None/NaN if no evaluable metrics
+
+# Suitability – returns None/NaN if no evaluable metrics
+
 score_a, num_a, den_a = sm.suitability_score_named(
     feats_a,
     weights=weights,
@@ -166,29 +188,51 @@ score_b, num_b, den_b = sm.suitability_score_named(
     none_if_no_metrics=True,
 )
 
-# similarity over intersection of present features
+
+# Similarity over intersection of present features (Aparna rules)
+
 cos_ab   = cosine_from_named(feats_a, feats_b)
+
+# Euclidean distance and similarity (1 / (1 + d)), with NaN propagation
 euc_dist = euclidean_distance_named(feats_a, feats_b, weights=weights)
+euc_sim  = euclidean_similarity_named(feats_a, feats_b, weights=weights)
+
+# Tanimoto similarity (continuous, weighted)
 tan_ab   = tanimoto_from_named(feats_a, feats_b, weights=weights)
+
+# Jaccard on keys (uses MIN_OVERLAP + all-zeros->1.0 rule)
 jac_ab   = jaccard_on_keys(feats_a, feats_b, thresh=0.0)
 
-# convert distance -> similarity if you want a similarity score
-euc_sim = 1.0 / (1.0 + euc_dist)  # in [0, 1]
+print("\n=== Smoke similarity test between two real IDs ===")
+print("ID A:", ids[0])
+print("ID B:", ids[1])
 
-
-print("cosine:", cos_ab)
+print("\n-- Similarities / distances --")
+print("cosine_similarity:", cos_ab)
 print("euclidean_distance:", euc_dist)
-print("euclidean_similarity:", euc_sim)
-print("tanimoto:", tan_ab)
+print("euclidean_similarity (1 / (1 + d)):", euc_sim)
+print("tanimoto_similarity:", tan_ab)
 print("jaccard_on_keys:", jac_ab)
-print("A suitability:", score_a, num_a, den_a)
-print("B suitability:", score_b, num_b, den_b)
+
+print("\n-- Suitability --")
+print("A suitability:", score_a, "  (num, den):", num_a, den_a)
+print("B suitability:", score_b, "  (num, den):", num_b, den_b)
+
+print("\nDone.")
 ```
 
 ## Notes & tips
-- **Skip‑if‑missing:** metrics are only added when inputs are valid (no silent zero‑fills).
+- **Skip-if-missing:** metrics are only added when inputs are valid (no silent zero-fills).
+- **MIN_OVERLAP_FOR_SIMILARITY:** named-vector similarities
+  (`cosine_similarity_named`, `euclidean_distance_named`,
+  `tanimoto_similarity_named`, `jaccard_on_keys`) return `NaN` when there
+  are fewer than this many overlapping finite features.
+- **All-zero rule:** if there are at least `MIN_OVERLAP_FOR_SIMILARITY`
+  overlapping keys and all intersecting values are zero, similarities
+  return `1.0` and distances return `0.0`.
 - For DEV with XLSX files, ensure `openpyxl` is installed.
-- To get richer shared feature sets, enable `age` and `freq_*` by providing the needed inputs/bounds in `config.py`.
+- To get richer shared feature sets, enable `age` and `freq_*` by providing
+  the needed inputs/bounds in `config.py`.
 
 ## License
 MIT

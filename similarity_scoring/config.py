@@ -18,10 +18,27 @@ PATHS_PROD = {
 PATHS_DEV = {
     "demographics":        r"D:\Judge_bias_detection\milestone_2\demographics.csv",
     "prior_commitments":   r"D:\Judge_bias_detection\milestone_2\prior_commitments.csv",
-    "current_commitments": r"D:\Judge_bias_detection\milestone_2\current_commitments.xlsx",
+    "current_commitments": r"D:\Judge_bias_detection\milestone_2\current_commitments.csv",
 }
 
 PATHS = PATHS_PROD if PROFILE == "PROD" else PATHS_DEV
+
+
+# Similarity / severity configuration 
+
+
+# Minimum number of overlapping (valid) features required for similarity.
+# If the intersection size is < MIN_OVERLAP_FOR_SIMILARITY, all similarity
+# measures (cosine, euclidean_sim, tanimoto, jaccard) should return NaN.
+MIN_OVERLAP_FOR_SIMILARITY: int = 3
+
+# Decay rate λ used in the severity_trend formula:
+# severity_trend = Δv * exp(-λ * years_elapsed)
+SEVERITY_DECAY_RATE: float = 0.15  # can be tuned as needed
+
+# If not None, overrides the computed years_elapsed used for severity_trend.
+# Example: set to 10.0 to force a fixed 10-year window.
+DEFAULT_TIME_ELAPSED_YEARS: Any = None
 
 # Column Map
 COLS: Dict[str, Any] = {
@@ -58,7 +75,9 @@ DEFAULTS: Dict[str, Any] = {
     "freq_min_rate": None,
     "freq_max_rate": None,
 
-    # Years window for severity trend
+    # Legacy window for severity trend; actual years_elapsed will now come
+    # from date differences in compute_metrics_v2, unless overridden by
+    # DEFAULT_TIME_ELAPSED_YEARS above.
     "trend_years_elapsed": 10.0,
 
     # Childhood months (if used)
@@ -118,7 +137,8 @@ METRIC_DIRECTIONS: Dict[str, int] = {
     "age": +1,
     "freq_violent": -1,
     "freq_total": -1,
-    "severity_trend": +1,
+    # UPDATED: severity_trend is inversely related to suitability
+    "severity_trend": -1,
     "edu_general": +1,
     "edu_advanced": +1,
     "rehab_general": +1,
@@ -136,5 +156,5 @@ METRIC_RANGES: Dict[str, Any] = {
     "edu_general":   (0.0, 1.0),
     "edu_advanced":  (0.0, 1.0),
     "rehab_general": (0.0, 1.0),
-    "rehab_advanced":(0.0, 1.0),
+    "rehab_advanced": (0.0, 1.0),
 }
