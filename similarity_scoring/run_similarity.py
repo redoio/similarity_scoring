@@ -7,7 +7,8 @@ Uses the canonical, library-only modules:
   - config.py                (PATHS, COLS, OFFENSE_LISTS, METRIC_WEIGHTS, METRIC_DIRECTIONS)
   - compute_metrics.py       (read_table, compute_features)
   - sentencing_math.py       (suitability_score_named, suitability_out_of_named)
-  - vector_similarity.py     (cosine_from_named)  ← lives in this repo
+  - vector_similarity.py     (cosine_from_named)
+  - similarity_metrics.py    (euclidean / tanimoto / jaccard on keys)
 
 Examples:
   python run_similarity.py --cdcr-id A1234
@@ -23,6 +24,12 @@ import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 from vector_similarity import cosine_from_named
+from similarity_metrics import (
+    euclidean_distance_named,
+    euclidean_similarity_named,
+    tanimoto_similarity_named,
+    jaccard_on_keys,
+)
 
 
 def _load_dataframes():
@@ -32,10 +39,12 @@ def _load_dataframes():
     return demo, curr, prior
 
 
-def _compute_named_features(cdcr_id: str,
-                            demo,
-                            curr,
-                            prior) -> tuple[Dict[str, float], Dict[str, Any]]:
+def _compute_named_features(
+    cdcr_id: str,
+    demo,
+    curr,
+    prior,
+) -> tuple[Dict[str, float], Dict[str, Any]]:
     lists = getattr(CFG, "OFFENSE_LISTS", {"violent": [], "nonviolent": []})
     feats, aux = cm.compute_features(cdcr_id, demo, curr, prior, lists)
     return feats, aux
@@ -44,7 +53,7 @@ def _compute_named_features(cdcr_id: str,
 def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     print(f"\n=== {cdcr_id} ===")
     if not feats:
-        print("No computable features (inputs likely missing or all offenses → 'other').")
+        print("No computable features (inputs missing or all offenses classified as 'other').")
         return
 
     # deterministic order for readability
@@ -74,7 +83,7 @@ def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     )
 
     if ratio is None or (isinstance(ratio, float) and math.isnan(ratio)) or no_denom:
-        print("Suitability score: NOT EVALUATED (no offense-based metrics / out_of=0)")
+        print("Suitability score: NOT EVALUATED (no valid weighted metrics / out_of=0)")
         print(f"  ├─ numerator (Σ w·m): {num}")
         print(f"  └─ out_of (denominator): {denom}")
     else:
@@ -85,7 +94,13 @@ def _print_person(cdcr_id: str, feats: Dict[str, float], aux: Dict[str, Any]):
     # optional quick aux preview
     if aux:
         bits = []
-        for key in ("age_value", "pct_completed", "time_outside"):
+        for key in (
+            "age_value",
+            "pct_completed",
+            "time_outside",
+            "years_elapsed_from_commitments",
+            "years_elapsed_for_trend",
+        ):
             if key in aux and aux[key] is not None:
                 bits.append(f"{key}={aux[key]}")
         if bits:
@@ -109,10 +124,32 @@ def main():
         feats2, aux2 = _compute_named_features(args.compare_id, demo, curr, prior)
         _print_person(args.compare_id, feats2, aux2)
 
-        # Cosine over intersecting keys only (vector_similarity handles intersection)
-        sim = cosine_from_named(feats1, feats2)
-        print(f"\nCosine similarity ({args.cdcr_id} vs {args.compare_id}): {sim:.3f}")
+        print(f"\n=== Pairwise similarity: {args.cdcr_id} vs {args.compare_id} ===")
 
+        # Cosine
+        cos_sim = cosine_from_named(feats1, feats2)
+
+        # Euclidean distance + similarity
+        euc_dist = euclidean_distance_named(feats1, feats2)
+        euc_sim = euclidean_similarity_named(feats1, feats2)
+
+        # Tanimoto similarity
+        tani_sim = tanimoto_similarity_named(feats1, feats2)
+
+        # Jaccard on keys (threshold 0.0 by default)
+        jacc = jaccard_on_keys(feats1, feats2, thresh=0.0)
+
+        def _fmt(name: str, val: Any, extra: str = ""):
+            if isinstance(val, float) and math.isnan(val):
+                print(f"{name}: NaN (undefined — insufficient overlapping valid features or degenerate vectors){extra}")
+            else:
+                print(f"{name}: {float(val):.3f}{extra}")
+
+        _fmt("Cosine similarity", cos_sim)
+        _fmt("Euclidean distance", euc_dist)
+        _fmt("Euclidean similarity", euc_sim, "  [1 / (1 + distance)]")
+        _fmt("Tanimoto similarity", tani_sim)
+        _fmt("Jaccard (on keys)", jacc)
 
 if __name__ == "__main__":
     main()
