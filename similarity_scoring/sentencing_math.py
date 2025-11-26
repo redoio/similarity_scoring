@@ -16,7 +16,7 @@ import math
 
 # Optional config hook (safe)
 try:
-    import config as CFG  # type: ignore
+    from similarity_scoring import config as CFG  # type: ignore
 except Exception:
     CFG = None  # type: ignore
 
