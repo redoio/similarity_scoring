@@ -27,14 +27,21 @@ Edit `config.py`:
 - `PATHS`: locations for `demographics`, `current_commitments`, `prior_commitments`.
 - `COLS`: column mappings (any `None` disables that metric).
 - `OFFENSE_LISTS`: explicit code lists for `violent` / `nonviolent` (unlisted → `other` by design).
-- `DEFAULTS`: knobs like `freq_min_rate` / `freq_max_rate`, `trend_years_elapsed`,
-  `DEFAULT_TIME_ELAPSED_YEARS`, etc.
+- `DEFAULTS`: configuration knobs for age normalization and frequency bounds.
++ `SEVERITY_DECAY_RATE`: decay λ used in the severity_trend formula.The years_elapsed value follows 
+  3-step precedence:
+    1. Computed years = first prior → last current commitment.
+    2. Fallback = `trend_years_elapsed` (config default).
+    3. Override = `DEFAULT_TIME_ELAPSED_YEARS` (if set; highest precedence).
+  This affects only the severity_trend metric.
 - `MIN_OVERLAP_FOR_SIMILARITY`: minimum number of overlapping, non-missing features
    required to compute cosine / Euclidean / Tanimoto / Jaccard-on-keys (default = 3).
 - `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
+   Note: The weight for age is now 1.0 (non-zero) so age contributes to suitability.
+   This follows the latest preprint where age is an active metric after normalization.
 - `METRIC_DIRECTIONS`: +1 / -1 per metric (e.g. `desc_nonvio_*` = +1, `severity_trend` = -1).
 
-> **Important:** Frequency metrics require **both** a valid exposure window and and bounds in config.
+> **Important:** Frequency metrics require **both** a valid exposure window and bounds in config.
 > Set `COLS['age_years']` to enable the `age` metric.
 
 ## Quick start (CLI)
@@ -97,13 +104,14 @@ T = \frac{\sum_i w_i x_i y_i}
          {\sum_i w_i x_i^2 + \sum_i w_i y_i^2 - \sum_i w_i x_i y_i}
 $$
 
-- **Jaccard (binary sets with threshold \(	au\)):**  
+- **Jaccard (binary sets with threshold \(\tau\)):**  
 
 $$
 J = \frac{|A \cap B|}{|A \cup B|}, \quad
 A = \{i \mid x_i > \tau\}, \quad
 B = \{i \mid y_i > \tau\}
 $$
+
 
 > All similarities operate on the **intersection of feature names** only (see `vector_similarity.align_keys`).  
 > This guards against inflated similarity from fabricated zeros.

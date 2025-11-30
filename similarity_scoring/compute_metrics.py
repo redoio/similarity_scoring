@@ -19,10 +19,10 @@ Design notes:
   • Weights are NAME-BASED and should be applied outside this module.
   • Exposure window: uses DEFAULTS["months_elapsed_total"] if provided; otherwise
     computes per-person exposure as months from (DOB+18y) to reference_date.
-  • Severity trend: years_elapsed is preferably computed from commitment tables
-    (first prior commitment date → last current commitment date), optionally
-    overridden by DEFAULT_TIME_ELAPSED_YEARS; else falls back to
-    DEFAULTS["trend_years_elapsed"].
+  • Severity trend: years_elapsed is computed from commitment tables
+    (first prior commitment date → last current commitment date); if
+    DEFAULT_TIME_ELAPSED_YEARS is not None, that value overrides the
+    computed years when scoring severity_trend.
   • STRICT SKIP-IF-MISSING: features are ONLY added when inputs are valid.
 """
 
@@ -338,23 +338,24 @@ def compute_features(
 
     # Severity trend — only when both denominators > 0
     if conv.curr_total > 0 and conv.past_total > 0:
-        # 1) Try to compute years elapsed from commitments
+        # 1) Compute years elapsed from commitments
         yrs_from_commits = _years_elapsed_from_commitments(uid, current_df, prior_df)
         aux["years_elapsed_from_commitments"] = yrs_from_commits
 
-        # 2) Base years: commitments → DEFAULTS["trend_years_elapsed"] fallback
+        # 2) Start with computed value, then optionally override via config
         yrs_elapsed = yrs_from_commits
-        if yrs_elapsed is None:
-            yrs_elapsed = float(_cfg_default("trend_years_elapsed", 0.0) or 0.0)
 
-        # 3) Global override from config (if provided)
         override_years = getattr(CFG, "DEFAULT_TIME_ELAPSED_YEARS", None)
         if override_years is not None:
+            # Config override (acts as default horizon when set)
             try:
                 yrs_elapsed = float(override_years)
             except Exception:
                 # If override is misconfigured, silently keep computed yrs_elapsed
                 pass
+        elif yrs_elapsed is None:
+            # Fallback if neither computed nor override is available
+            yrs_elapsed = 0.0
 
         aux["years_elapsed_for_trend"] = yrs_elapsed
 
