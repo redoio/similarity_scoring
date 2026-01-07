@@ -242,5 +242,67 @@ print("\nDone.")
 - To get richer shared feature sets, enable `age` and `freq_*` by providing
   the needed inputs/bounds in `config.py`.
 
+
+## Edge cases (important)
+
+### Why cosine can be NaN while Euclidean similarity is defined
+
+Consider two named vectors:
+
+```python
+test_a = {
+  "desc_nonvio_curr": 0.0,
+  "desc_nonvio_past": 0.6667,
+  "severity_trend": 0.1487,
+}
+
+test_b = {
+  "desc_nonvio_curr": 0.0,
+  "desc_nonvio_past": 0.0,
+  "severity_trend": 0.0,
+}
+```
+
+Overlapping keys = 3 → passes `MIN_OVERLAP_FOR_SIMILARITY = 3`.
+
+**Cosine similarity**
+
+Cosine divides by the product of the vector norms.
+
+`test_b` is an all-zero vector on the overlapping keys → its norm is 0.
+
+The cosine denominator collapses → cosine similarity is undefined.
+
+**Result:** `cosine_similarity_named = NaN`.
+
+**Euclidean distance / similarity**
+
+Euclidean distance between a non-zero vector and a zero vector is well-defined.
+
+Distance `d > 0`, so similarity `1 / (1 + d)` is also well-defined.
+
+**Result:** `euclidean_similarity_named ∈ (0, 1)`.
+
+This difference is intentional and mathematically correct, and explains why cosine may be `NaN` while Euclidean similarity is defined for the same inputs.
+
+
+### Distinct similarity cases (named vectors)
+
+After filtering to overlapping feature names and dropping invalid values:
+
+| Case | Behavior |
+|-----|---------|
+| Overlap < `MIN_OVERLAP_FOR_SIMILARITY` | All similarities return **NaN** |
+| All overlapping usable values are 0 on both sides | Similarities return **1.0** (distance = 0.0) |
+| One side all-zero, other not | Cosine / Tanimoto → **NaN** (denominator collapses) |
+|  | Euclidean distance → defined |
+|  | Euclidean similarity `1 / (1 + d)` → defined |
+| Jaccard-on-keys | Depends on “active keys” above threshold `τ` (often NaN if none) |
+| Normal non-zero overlap | All similarities computed normally |
+
+These rules are enforced consistently across  
+`cosine_similarity_named`, `euclidean_*`, `tanimoto_*`, and `jaccard_on_keys`.
+
+
 ## License
 MIT
