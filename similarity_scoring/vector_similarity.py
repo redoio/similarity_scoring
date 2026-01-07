@@ -1,124 +1,171 @@
-# vector_similarity.py
+# similarity_scoring/vector_similarity.py
 from __future__ import annotations
-from typing import Dict, Sequence, List, Optional
-import math
 
-# Delegate named-vector logic to similarity_metrics.
-# Support both package imports (pytest, from . import) and script imports.
+from typing import Dict, Optional
+
+# Delegate ALL named-vector rule enforcement to similarity_metrics
 try:
-    # Package-relative import (when _Milestone_2 is a package)
     from .similarity_metrics import (
         cosine_similarity_named,
+        cosine_distance_named,
         euclidean_distance_named,
+        euclidean_similarity_named,
+        tanimoto_similarity_named,
+        tanimoto_distance_named,
+        jaccard_on_keys,
     )
 except ImportError:
-    # Fallback for direct script usage (python smoke_similarity_test.py)
-    from similarity_metrics import (
+    from similarity_metrics import (  # type: ignore
         cosine_similarity_named,
+        cosine_distance_named,
         euclidean_distance_named,
+        euclidean_similarity_named,
+        tanimoto_similarity_named,
+        tanimoto_distance_named,
+        jaccard_on_keys,
     )
 
+Weights = Dict[str, float]
+Vec = Dict[str, float]
+
 __all__ = [
-    "align_keys",
-    "cosine",
+    # cosine
+    "cosine_similarity_from_named",
+    "cosine_distance_from_named",
+    "cosine_similarity_from_named_weighted",
+    "cosine_distance_from_named_weighted",
+    # euclidean
+    "euclidean_distance_from_named",
+    "euclidean_similarity_from_named",
+    "euclidean_distance_from_named_weighted",
+    "euclidean_similarity_from_named_weighted",
+    # tanimoto
+    "tanimoto_similarity_from_named",
+    "tanimoto_distance_from_named",
+    "tanimoto_similarity_from_named_weighted",
+    "tanimoto_distance_from_named_weighted",
+    # jaccard on keys (weights intentionally ignored)
+    "jaccard_on_keys_from_named",
+    "jaccard_on_keys_from_named_weighted",
+    # backwards-compat aliases (optional)
     "cosine_from_named",
     "cosine_from_named_weighted",
     "euclidean_from_named",
 ]
 
 
-def align_keys(a: Dict[str, float], b: Dict[str, float]) -> list[str]:
-    """Sorted intersection of feature names (only shared features are comparable)."""
-    return sorted(set(a).intersection(b))
+# Cosine (similarity & distance)
+def cosine_similarity_from_named(a: Vec, b: Vec) -> float:
+    """Cosine similarity on named vectors (rule enforcement lives in similarity_metrics)."""
+    return float(cosine_similarity_named(a, b, weights=None))
 
 
-def _to_float_or_none(x) -> Optional[float]:
-    """Best-effort cast to float; return None for NaN/inf/bad values."""
-    try:
-        v = float(x)
-        if math.isnan(v) or math.isinf(v):
-            return None
-        return v
-    except Exception:
-        return None
+def cosine_distance_from_named(a: Vec, b: Vec) -> float:
+    """Cosine distance = 1 - cosine similarity (rule enforcement lives in similarity_metrics)."""
+    return float(cosine_distance_named(a, b, weights=None))
 
 
-def _finite_pairs(u: Sequence, v: Sequence) -> List[tuple[float, float]]:
-    """Return list of (u_i, v_i) where both are finite floats."""
-    pairs: List[tuple[float, float]] = []
-    for ux, vx in zip(u, v):
-        fu = _to_float_or_none(ux)
-        fv = _to_float_or_none(vx)
-        if fu is not None and fv is not None:
-            pairs.append((fu, fv))
-    return pairs
-
-
-# UNWEIGHTED COSINE on raw sequences (no MIN_OVERLAP here)
-
-def cosine(u: Sequence[float], v: Sequence[float]) -> float:
-    """
-    Plain cosine similarity on numeric sequences.
-
-    Returns:
-      • NaN if no finite overlapping elements
-      • NaN if zero-norm case (undefined)
-      • otherwise cosine similarity in [-1, 1]
-    """
-    pairs = _finite_pairs(u, v)
-    if not pairs:
-        return math.nan
-
-    num = sum(ux * vx for ux, vx in pairs)
-    sum_u2 = sum(ux * ux for ux, _ in pairs)
-    sum_v2 = sum(vx * vx for _, vx in pairs)
-
-    nu = math.sqrt(sum_u2)
-    nv = math.sqrt(sum_v2)
-    if nu == 0.0 or nv == 0.0:
-        return math.nan
-
-    return num / (nu * nv)
-
-
-# NAMED-VECTOR WRAPPERS (Aparna rules via similarity_metrics)
-
-def cosine_from_named(a: Dict[str, float], b: Dict[str, float]) -> float:
-    """
-    Cosine similarity between two name-keyed feature dicts.
-
-    Behavior is fully governed by similarity_metrics.cosine_similarity_named:
-      • Uses MIN_OVERLAP_FOR_SIMILARITY (from config.py).
-      • If overlap < MIN_OVERLAP → NaN.
-      • If all intersecting values are 0 → similarity = 1.0.
-      • Otherwise standard weighted cosine in [0, 1].
-    """
-    return float(cosine_similarity_named(a, b))
-
-
-def cosine_from_named_weighted(
-    a: Dict[str, float],
-    b: Dict[str, float],
-    weights: Dict[str, float],
-) -> float:
-    """
-    Weighted cosine similarity between two name-keyed feature dicts.
-
-    Delegates to similarity_metrics.cosine_similarity_named with the given weights.
-    Weights must be non-negative; non-positive weights are ignored inside the metric.
-    """
+def cosine_similarity_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted cosine similarity (weights are per-feature; non-positive weights are ignored by core)."""
     if not weights:
-        # fallback to unweighted behavior if no weights provided
-        return cosine_from_named(a, b)
+        return cosine_similarity_from_named(a, b)
     return float(cosine_similarity_named(a, b, weights=weights))
 
 
-def euclidean_from_named(a: Dict[str, float], b: Dict[str, float]) -> float:
-    """
-    Euclidean distance between two name-keyed feature dicts.
+def cosine_distance_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted cosine distance (delegates to core for all edge-case behavior)."""
+    if not weights:
+        return cosine_distance_from_named(a, b)
+    return float(cosine_distance_named(a, b, weights=weights))
 
-    Delegates to similarity_metrics.euclidean_distance_named, which:
-      • Enforces MIN_OVERLAP_FOR_SIMILARITY via the shared key set.
-      • Returns NaN if there are not enough overlapping finite values.
+
+# Euclidean (distance & similarity)
+def euclidean_distance_from_named(a: Vec, b: Vec) -> float:
+    """Euclidean distance on named vectors (rule enforcement lives in similarity_metrics)."""
+    return float(euclidean_distance_named(a, b, weights=None))
+
+
+def euclidean_similarity_from_named(a: Vec, b: Vec) -> float:
+    """Euclidean similarity = 1 / (1 + distance) (rule enforcement lives in similarity_metrics)."""
+    return float(euclidean_similarity_named(a, b, weights=None))
+
+
+def euclidean_distance_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted Euclidean distance (per-feature weights)."""
+    if not weights:
+        return euclidean_distance_from_named(a, b)
+    return float(euclidean_distance_named(a, b, weights=weights))
+
+
+def euclidean_similarity_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted Euclidean similarity (computed from weighted distance by the core)."""
+    if not weights:
+        return euclidean_similarity_from_named(a, b)
+    return float(euclidean_similarity_named(a, b, weights=weights))
+
+
+# Tanimoto (similarity & distance)
+def tanimoto_similarity_from_named(a: Vec, b: Vec) -> float:
+    """Tanimoto similarity on named vectors (rule enforcement lives in similarity_metrics)."""
+    return float(tanimoto_similarity_named(a, b, weights=None))
+
+
+def tanimoto_distance_from_named(a: Vec, b: Vec) -> float:
+    """Tanimoto distance = 1 - tanimoto similarity (rule enforcement lives in similarity_metrics)."""
+    return float(tanimoto_distance_named(a, b, weights=None))
+
+
+def tanimoto_similarity_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted Tanimoto similarity (per-feature weights)."""
+    if not weights:
+        return tanimoto_similarity_from_named(a, b)
+    return float(tanimoto_similarity_named(a, b, weights=weights))
+
+
+def tanimoto_distance_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Weighted Tanimoto distance (delegates to core for all edge-case behavior)."""
+    if not weights:
+        return tanimoto_distance_from_named(a, b)
+    return float(tanimoto_distance_named(a, b, weights=weights))
+
+
+# Jaccard on keys (weights ignored)
+def jaccard_on_keys_from_named(a: Vec, b: Vec, thresh: float = 0.0) -> float:
     """
-    return float(euclidean_distance_named(a, b))
+    Jaccard on keys uses only which features are "active" (value > thresh).
+    Weights are intentionally not used (set-based metric).
+    """
+    return float(jaccard_on_keys(a, b, thresh=thresh))
+
+
+def jaccard_on_keys_from_named_weighted(
+    a: Vec,
+    b: Vec,
+    weights: Optional[Weights] = None,
+    thresh: float = 0.0,
+) -> float:
+    """
+    API-symmetric wrapper that accepts weights but intentionally ignores them.
+    This avoids "missing weighted variant" confusion while keeping semantics correct.
+    """
+    _ = weights  # explicitly ignored
+    return jaccard_on_keys_from_named(a, b, thresh=thresh)
+
+
+# Backwards-compat aliases (for optional use)
+def cosine_from_named(a: Vec, b: Vec) -> float:
+    """Back-compat alias for cosine similarity."""
+    return cosine_similarity_from_named(a, b)
+
+
+def cosine_from_named_weighted(a: Vec, b: Vec, weights: Optional[Weights]) -> float:
+    """Back-compat alias for weighted cosine similarity."""
+    return cosine_similarity_from_named_weighted(a, b, weights)
+
+
+def euclidean_from_named(a: Vec, b: Vec) -> float:
+    """
+    Back-compat alias.
+    Historically used as 'euclidean_from_named' meaning distance.
+    """
+    return euclidean_distance_from_named(a, b)

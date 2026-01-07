@@ -1,13 +1,26 @@
-# similarity_metrics.py
+# similarity_scoring/similarity_metrics.py
 from __future__ import annotations
 
+"""
+similarity_metrics.py — canonical similarity/distance implementations.
+
+This module is the single source of truth for:
+  - MIN_OVERLAP_FOR_SIMILARITY gating
+  - NaN behavior when overlap is insufficient or unusable
+  - "all-zero overlap" rule (similarity = 1.0 for cosine/tanimoto; jaccard-on-keys = 1.0)
+  - consistent weighted handling for magnitude-based metrics
+
+The app/notebook-facing wrapper API lives in vector_similarity.py.
+"""
+
 import math
-from typing import Dict, Optional, Sequence, Iterable, List
+from typing import Dict, Optional, Iterable, Any
 
 import numpy as np
-import pandas as pd  # <-- NEW: for gower()
+import pandas as pd  # used for gower()
 
-# --- CONFIG IMPORT (safe) ---
+
+# CONFIG IMPORT
 try:
     import config as CFG
     MIN_OVERLAP = int(getattr(CFG, "MIN_OVERLAP_FOR_SIMILARITY", 3))
@@ -16,7 +29,7 @@ except Exception:
 
 
 __all__ = [
-    # matrix-level (unchanged)
+    # matrix-level
     "cosine",
     "euclidean",
     "manhattan",
@@ -25,7 +38,7 @@ __all__ = [
     "hamming_binary",
     "gower",
 
-    # new named-vector distance/sim pairs
+    # named-vector distance/sim pairs (wrapper imports these)
     "cosine_distance_named",
     "cosine_similarity_named",
     "euclidean_distance_named",
@@ -36,13 +49,12 @@ __all__ = [
     # backwards compatibility
     "tanimoto_from_named",
 
-    # jaccard on keys (updated)
+    # jaccard on keys
     "jaccard_on_keys",
 ]
 
 
-#  MATRIX-LEVEL METRICS 
-
+# MATRIX-LEVEL METRICS
 def cosine(X: np.ndarray) -> np.ndarray:
     X = np.asarray(X, float)
     Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
@@ -51,8 +63,8 @@ def cosine(X: np.ndarray) -> np.ndarray:
 
 def euclidean(X: np.ndarray) -> np.ndarray:
     X = np.asarray(X, float)
-    sq = np.sum(X**2, axis=1, keepdims=True)
-    d2 = sq + sq.T - 2*(X @ X.T)
+    sq = np.sum(X ** 2, axis=1, keepdims=True)
+    d2 = sq + sq.T - 2 * (X @ X.T)
     np.maximum(d2, 0, out=d2)
     return np.sqrt(d2)
 
@@ -62,8 +74,7 @@ def manhattan(X: np.ndarray) -> np.ndarray:
     return np.sum(np.abs(X[:, None, :] - X[None, :, :]), axis=2)
 
 
-#  BINARY SET METRICS 
-
+# BINARY SET METRICS (matrix)
 def jaccard_binary(B: np.ndarray) -> np.ndarray:
     B = (np.asarray(B) > 0).astype(np.uint8)
     inter = (B[:, None, :] & B[None, :, :]).sum(axis=2)
@@ -87,39 +98,41 @@ def hamming_binary(B: np.ndarray) -> np.ndarray:
     return neq / float(p)
 
 
-#  HELPERS
-
-def _finite(val):
-    """Return float or None."""
+# HELPERS
+def _finite(val: Any) -> Optional[float]:
+    """Return finite float value, else None."""
     try:
         v = float(val)
         if math.isnan(v) or math.isinf(v):
             return None
         return v
-    except:
+    except Exception:
         return None
 
 
-def _intersect(a: Dict, b: Dict, weights=None):
-    """Return overlapping keys considering optional weights."""
+def _intersect(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> list[str]:
+    """
+    Return overlapping keys of a and b, optionally restricted to keys present in weights.
+    Note: this uses key intersection, not "valid numeric" filtering (that happens later).
+    """
     ks = set(a) & set(b)
     if weights:
         ks &= set(weights)
     return sorted(ks)
 
 
-def _check_overlap_and_zero_case(a, b, keys):
+def _check_overlap_and_zero_case(a: Dict[str, float], b: Dict[str, float], keys: list[str]) -> tuple[bool, bool]:
     """
-    Applies global MIN_OVERLAP and zero-vector rule.
+    Applies global MIN_OVERLAP and "all-zero overlap" rule.
 
     Returns:
         (allowed: bool, all_zero: bool)
     """
-    # 1. Not enough overlap
+    # 1) Not enough overlapping keys
     if len(keys) < MIN_OVERLAP:
         return False, False
 
-    # 2. Are all matching values zero?
+    # 2) Are all overlapping finite values exactly zero?
     all_zero = True
     for k in keys:
         x = _finite(a.get(k))
@@ -133,15 +146,14 @@ def _check_overlap_and_zero_case(a, b, keys):
     return True, all_zero
 
 
-#  COSINE 
-
-def cosine_distance_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
-    """Cosine DISTANCE = 1 - cosine similarity."""
-    sim = cosine_similarity_named(a, b, weights)
+# COSINE (named vectors)
+def cosine_distance_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
+    """Cosine distance = 1 - cosine similarity."""
+    sim = cosine_similarity_named(a, b, weights=weights)
     return math.nan if isinstance(sim, float) and math.isnan(sim) else 1.0 - sim
 
 
-def cosine_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
+def cosine_similarity_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
     ks = _intersect(a, b, weights)
 
     allowed, all_zero = _check_overlap_and_zero_case(a, b, ks)
@@ -158,6 +170,7 @@ def cosine_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=No
         y = _finite(b.get(k))
         if x is None or y is None:
             continue
+
         w = float(weights.get(k, 1.0) if weights else 1.0)
         if w <= 0:
             continue
@@ -167,15 +180,14 @@ def cosine_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=No
         den_x += w * (x * x)
         den_y += w * (y * y)
 
-    if not used or den_x <= 0 or den_y <= 0:
+    if not used or den_x <= 0.0 or den_y <= 0.0:
         return math.nan
 
     return num / math.sqrt(den_x * den_y)
 
 
-#  EUCLIDEAN 
-
-def euclidean_distance_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
+# EUCLIDEAN (named vectors)
+def euclidean_distance_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
     ks = _intersect(a, b, weights)
 
     allowed, _ = _check_overlap_and_zero_case(a, b, ks)
@@ -184,36 +196,38 @@ def euclidean_distance_named(a: Dict[str, float], b: Dict[str, float], weights=N
 
     used = False
     s = 0.0
+
     for k in ks:
         x = _finite(a.get(k))
         y = _finite(b.get(k))
         if x is None or y is None:
             continue
+
         w = float(weights.get(k, 1.0) if weights else 1.0)
         if w <= 0:
             continue
+
         used = True
-        s += w * (x - y)**2
+        s += w * (x - y) ** 2
 
     return math.sqrt(s) if used else math.nan
 
 
-def euclidean_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
-    """Euclidean SIMILARITY = 1 / (1 + distance)."""
-    dist = euclidean_distance_named(a, b, weights)
+def euclidean_similarity_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
+    """Euclidean similarity = 1 / (1 + distance)."""
+    dist = euclidean_distance_named(a, b, weights=weights)
     if isinstance(dist, float) and math.isnan(dist):
         return math.nan
     return 1.0 / (1.0 + dist)
 
 
-#  TANIMOTO 
-
-def tanimoto_distance_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
-    sim = tanimoto_similarity_named(a, b, weights)
+# TANIMOTO (named vectors)
+def tanimoto_distance_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
+    sim = tanimoto_similarity_named(a, b, weights=weights)
     return math.nan if isinstance(sim, float) and math.isnan(sim) else 1.0 - sim
 
 
-def tanimoto_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=None) -> float:
+def tanimoto_similarity_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
     ks = _intersect(a, b, weights)
 
     allowed, all_zero = _check_overlap_and_zero_case(a, b, ks)
@@ -230,54 +244,54 @@ def tanimoto_similarity_named(a: Dict[str, float], b: Dict[str, float], weights=
         y = _finite(b.get(k))
         if x is None or y is None:
             continue
+
         w = float(weights.get(k, 1.0) if weights else 1.0)
         if w <= 0:
             continue
+
         used = True
         num += w * (x * y)
         den_x += w * (x * x)
         den_y += w * (y * y)
 
     den = den_x + den_y - num
-    if not used or den <= 0:
+    if not used or den <= 0.0:
         return math.nan
 
     return num / den
 
 
-#  Backwards compatibility alias (old name from earlier README)
-
-def tanimoto_from_named(a, b, weights=None):
-    """Alias kept for backward compatibility with older notebooks/READMEs."""
+def tanimoto_from_named(a: Dict[str, float], b: Dict[str, float], weights: Optional[Dict[str, float]] = None) -> float:
+    """Backwards compatibility alias for older notebooks/READMEs."""
     return tanimoto_similarity_named(a, b, weights=weights)
 
 
-#  JACCARD on KEYS 
-
-def jaccard_on_keys(a: Dict[str, float], b: Dict[str, float], thresh=0.0) -> float:
-
-    A = {k for k, v in a.items() if _finite(v) is not None and v > thresh}
-    B = {k for k, v in b.items() if _finite(v) is not None and v > thresh}
+# JACCARD ON KEYS (named vectors)
+def jaccard_on_keys(a: Dict[str, float], b: Dict[str, float], thresh: float = 0.0) -> float:
+    """
+    Jaccard on keys uses which features are "active" (value > thresh).
+    MIN_OVERLAP is applied to the INTERSECTION of active keys.
+    """
+    A = {k for k, v in a.items() if _finite(v) is not None and float(v) > thresh}
+    B = {k for k, v in b.items() if _finite(v) is not None and float(v) > thresh}
 
     ks = A & B
 
-    # MIN OVERLAP RULE
+    # MIN OVERLAP RULE (active-key intersection)
     if len(ks) < MIN_OVERLAP:
         return math.nan
 
-    # ALL ZERO case → treat union as valid
-    all_zero = all(a.get(k, 0) == 0 and b.get(k, 0) == 0 for k in ks)
+    # ALL ZERO case on intersection keys
+    all_zero = all(float(a.get(k, 0.0) or 0.0) == 0.0 and float(b.get(k, 0.0) or 0.0) == 0.0 for k in ks)
     if all_zero:
         return 1.0
 
     inter = len(ks)
     union = len(A | B)
-
     return inter / union if union > 0 else math.nan
 
 
-#  GOWER SIMILARITY (matrix)  
-
+# GOWER SIMILARITY (matrix)
 def gower(
     df: pd.DataFrame,
     num_cols: Iterable[str] | None = None,
@@ -289,9 +303,9 @@ def gower(
 
     Args:
         df: pandas DataFrame with rows as observations.
-        num_cols: list of numeric columns (range-normalized).
-        cat_cols: list of categorical columns (0/1 match).
-        bin_cols: list of binary columns (0/1 match).
+        num_cols: numeric columns (range-normalized).
+        cat_cols: categorical columns (0/1 match).
+        bin_cols: binary columns (0/1 match).
 
     Returns:
         n x n numpy array with Gower similarities in [0, 1].
@@ -348,8 +362,6 @@ def gower(
 
     total_parts = p_num + p_cat + p_bin
     if total_parts == 0:
-        # no usable columns → identity similarity
         return np.eye(n, dtype=float)
 
-    sim = (num_sim + cat_sim + bin_sim) / float(total_parts)
-    return sim
+    return (num_sim + cat_sim + bin_sim) / float(total_parts)

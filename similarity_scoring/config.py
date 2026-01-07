@@ -32,16 +32,20 @@ PATHS = PATHS_PROD if PROFILE == "PROD" else PATHS_DEV
 MIN_OVERLAP_FOR_SIMILARITY: int = 3
 
 # Decay rate λ used in the severity_trend formula:
-#   severity_trend = Δv * exp(-λ * years_elapsed)
+#   severity_trend = Δv * exp(-λ * years_elapsed_for_trend)
 SEVERITY_DECAY_RATE: float = 0.15  # can be tuned as needed
 
-# Global override for the years_elapsed used in severity_trend.
+
+# Time horizon knobs (two different concepts)
+
+# Trend horizon override (YEARS) used ONLY for severity_trend.
 # Workflow:
-#   1) By default, code computes elapsed years from
-#      first prior → last current commitment dates.
-#   2) If DEFAULT_TIME_ELAPSED_YEARS is not None, it replaces
-#      the computed value and acts as the default horizon.
-DEFAULT_TIME_ELAPSED_YEARS: Any = 10.0
+#   1) code computes years from (first prior commitment date → last current commitment date)
+#   2) if DEFAULT_TREND_YEARS_ELAPSED is not None, it overrides the computed years
+DEFAULT_TREND_YEARS_ELAPSED: Any = 10.0
+
+# Backwards compatibility alias (older name referenced in some places)
+DEFAULT_TIME_ELAPSED_YEARS: Any = DEFAULT_TREND_YEARS_ELAPSED
 
 
 # Column Map
@@ -50,16 +54,23 @@ COLS: Dict[str, Any] = {
     "age_years": None,                       # No age available -> feature skipped
     "dob": None,                             # optional (unused if None)
     "reference_date": None,                  # optional
+
     # Time/term fields (optional; used if your compute code supports them)
     "current_sentence": "aggregate sentence in months",
     "completed_time":  "time served in years",
     "past_time":       None,                 # optional
+
     # Offense text fields (used by counting logic)
     "current_offense_text": "offense",
     "prior_offense_text":   "offense",
+
     # Category text (ignored by compute if not used)
     "current_category_text": "offense category",
     "prior_category_text":   "offense category",
+
+    # Optional commitment date columns (only needed if present in tables)
+    # "prior_commit_date": "commitment_date",
+    # "current_commit_date": "commitment_date",
 }
 
 # Defaults / Behavior Knobs
@@ -67,8 +78,11 @@ DEFAULTS: Dict[str, Any] = {
     "missing_numeric": math.nan,
     "require_time_fields": ("current_sentence", "completed_time"),
 
-    # Optional global exposure window (months) for frequency metrics.
-    # If None, the code computes a per-person window from (DOB+18y) to reference_date.
+    # Frequency exposure window (MONTHS) used ONLY for freq_* metrics.
+    # If None, code computes a per-person window (implementation-defined).
+    "months_elapsed_for_frequency": None,
+
+    # Backwards compatibility alias (older key)
     "months_elapsed_total": None,
 
     # Age normalization (only used if age_years is present and valid)
@@ -119,7 +133,6 @@ METRIC_NAMES = [
 ]
 
 METRIC_WEIGHTS: Dict[str, float] = {
-    # Age is a full metric (normalized and positively aligned with suitability)
     "age": 1.0,
     "desc_nonvio_curr": 1.0,
     "desc_nonvio_past": 1.0,
@@ -138,7 +151,6 @@ METRIC_DIRECTIONS: Dict[str, int] = {
     "age": +1,
     "freq_violent": -1,
     "freq_total": -1,
-    # severity_trend is inversely related to suitability (ideal = 0)
     "severity_trend": -1,
     "edu_general": +1,
     "edu_advanced": +1,
@@ -149,7 +161,6 @@ METRIC_DIRECTIONS: Dict[str, int] = {
 METRIC_RANGES: Dict[str, Any] = {
     "desc_nonvio_curr": (0.0, 1.0),
     "desc_nonvio_past": (0.0, 1.0),
-    # metric is normalized to [0,1]
     "age": (0.0, 1.0),
     "freq_violent": (DEFAULTS["freq_min_rate"], DEFAULTS["freq_max_rate"]),
     "freq_total":   (DEFAULTS["freq_min_rate"], DEFAULTS["freq_max_rate"]),
