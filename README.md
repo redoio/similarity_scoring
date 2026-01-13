@@ -6,13 +6,15 @@ All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defa
 - `config.py` — Paths, column map, defaults, offense lists, **name‑based** metric weights.
 - `compute_metrics.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip‑if‑missing).
 - `sentencing_math.py` — Pure math (no I/O): time decomposition, proportions, frequency/trend, rehab, suitability (name‑based).
-- `vector_similarity.py` — Named-vector helpers: align_keys, cosine_from_named, cosine_from_named_weighted.
+- `vector_similarity.py` — Named-vector API (thin re-export): 
+  `cosine_similarity_named`, `euclidean_distance_named`, `euclidean_similarity_named`,
+  `tanimoto_similarity_named`, `jaccard_similarity_named`.
 - `similarity_metrics.py` — Matrix metrics (cosine, euclidean, manhattan, jaccard_binary,
-    dice_binary hamming_binary) **and** named-vector similarities:
-    cosine_similarity_named, euclidean_distance_named, euclidean_similarity_named,
-    tanimoto_similarity_named, tanimoto_distance_named, jaccard_on_keys.
-    Implements the global MIN_OVERLAP rule, the “all-zero → similarity=1” rule,
-    and full skip-if-missing behavior for named metrics.
+  dice_binary, hamming_binary) **and** named-vector similarities:
+  `cosine_similarity_named`, `euclidean_distance_named`, `euclidean_similarity_named`,
+  `tanimoto_similarity_named`, `jaccard_similarity_named`.
+  Implements the global `MIN_OVERLAP` rule, the “all-zero → similarity=1” rule,
+  and skip-if-missing behavior for named metrics.
 - `run_similarity.py` — CLI: prints features + suitability for an ID; optional cosine vs a second ID.
 
 ## Install
@@ -28,14 +30,14 @@ Edit `config.py`:
 - `COLS`: column mappings (any `None` disables that metric).
 - `OFFENSE_LISTS`: explicit code lists for `violent` / `nonviolent` (unlisted → `other` by design).
 - `DEFAULTS`: configuration knobs for age normalization and frequency bounds.
-+ `SEVERITY_DECAY_RATE`: decay λ used in the severity_trend formula.The years_elapsed value follows 
-  3-step precedence:
-    1. Computed years = first prior → last current commitment.
-    2. Fallback = `trend_years_elapsed` (config default).
-    3. Override = `DEFAULT_TIME_ELAPSED_YEARS` (if set; highest precedence).
-  This affects only the severity_trend metric.
+- `SEVERITY_DECAY_RATE`: decay λ used in the `severity_trend` formula.
+- `DEFAULTS["years_elapsed_for_trend"]`: optional override for severity trend horizon (years).
+  Precedence:
+  1) If commitment date columns exist and dates are present → computed years = first prior → last current.
+  2) If `DEFAULTS["years_elapsed_for_trend"]` is not `None` → use that value instead.
+  This affects only the `severity_trend` metric.
 - `MIN_OVERLAP_FOR_SIMILARITY`: minimum number of overlapping, non-missing features
-   required to compute cosine / Euclidean / Tanimoto / Jaccard-on-keys (default = 3).
+   required to compute cosine / Euclidean / Tanimoto / jaccard_similarity_named (default = 3).
 - `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
    Note: The weight for age is now 1.0 (non-zero) so age contributes to suitability.
    This follows the latest preprint where age is an active metric after normalization.
@@ -113,7 +115,7 @@ B = \{i \mid y_i > \tau\}
 $$
 
 
-> All similarities operate on the **intersection of feature names** only (see `vector_similarity.align_keys`).  
+> All similarities operate on the **intersection of feature names** only (handled internally in `similarity_metrics.py`).  
 > This guards against inflated similarity from fabricated zeros.
 
 ## Worked example (inline)
@@ -145,26 +147,23 @@ A real‑data example (two IDs, shared features, formulas, and multiple similari
 
 ## Programmatic use
 ```python
-import math
-
 import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
-from vector_similarity import cosine_from_named
-from similarity_metrics import (
+
+from vector_similarity import (
+    cosine_similarity_named,
     euclidean_distance_named,
     euclidean_similarity_named,
-    jaccard_on_keys,
-    tanimoto_from_named,   # backwards-compatible alias → tanimoto_similarity_named
+    tanimoto_similarity_named,
+    jaccard_similarity_named,
 )
 
 # Show current MIN_OVERLAP for quick debugging
 MIN_OVERLAP = getattr(CFG, "MIN_OVERLAP_FOR_SIMILARITY", 3)
 print(f"MIN_OVERLAP_FOR_SIMILARITY = {MIN_OVERLAP}")
 
-
 # Load source tables
-
 demo  = cm.read_table(CFG.PATHS["demographics"])
 curr  = cm.read_table(CFG.PATHS["current_commitments"])
 prior = cm.read_table(CFG.PATHS["prior_commitments"])
@@ -178,9 +177,7 @@ feats_b, aux_b = cm.compute_features(ids[1], demo, curr, prior, CFG.OFFENSE_LIST
 weights    = getattr(CFG, "METRIC_WEIGHTS", {})
 directions = getattr(CFG, "METRIC_DIRECTIONS", {})
 
-
 # Suitability – returns None/NaN if no evaluable metrics
-
 score_a, num_a, den_a = sm.suitability_score_named(
     feats_a,
     weights=weights,
@@ -196,20 +193,12 @@ score_b, num_b, den_b = sm.suitability_score_named(
     none_if_no_metrics=True,
 )
 
-
 # Similarity over intersection of present features (Aparna rules)
-
-cos_ab   = cosine_from_named(feats_a, feats_b)
-
-# Euclidean distance and similarity (1 / (1 + d)), with NaN propagation
+cos_ab   = cosine_similarity_named(feats_a, feats_b, weights=weights)
 euc_dist = euclidean_distance_named(feats_a, feats_b, weights=weights)
 euc_sim  = euclidean_similarity_named(feats_a, feats_b, weights=weights)
-
-# Tanimoto similarity (continuous, weighted)
-tan_ab   = tanimoto_from_named(feats_a, feats_b, weights=weights)
-
-# Jaccard on keys (uses MIN_OVERLAP + all-zeros->1.0 rule)
-jac_ab   = jaccard_on_keys(feats_a, feats_b, thresh=0.0)
+tan_ab   = tanimoto_similarity_named(feats_a, feats_b, weights=weights)
+jac_ab   = jaccard_similarity_named(feats_a, feats_b, thresh=0.0)
 
 print("\n=== Smoke similarity test between two real IDs ===")
 print("ID A:", ids[0])
@@ -220,27 +209,90 @@ print("cosine_similarity:", cos_ab)
 print("euclidean_distance:", euc_dist)
 print("euclidean_similarity (1 / (1 + d)):", euc_sim)
 print("tanimoto_similarity:", tan_ab)
-print("jaccard_on_keys:", jac_ab)
+print("jaccard_similarity_named (active keys):", jac_ab)
 
 print("\n-- Suitability --")
 print("A suitability:", score_a, "  (num, den):", num_a, den_a)
 print("B suitability:", score_b, "  (num, den):", num_b, den_b)
 
 print("\nDone.")
+
 ```
 
 ## Notes & tips
 - **Skip-if-missing:** metrics are only added when inputs are valid (no silent zero-fills).
 - **MIN_OVERLAP_FOR_SIMILARITY:** named-vector similarities
   (`cosine_similarity_named`, `euclidean_distance_named`,
-  `tanimoto_similarity_named`, `jaccard_on_keys`) return `NaN` when there
+  `tanimoto_similarity_named`, `jaccard_similarity_named`) return `NaN` when there
   are fewer than this many overlapping finite features.
 - **All-zero rule:** if there are at least `MIN_OVERLAP_FOR_SIMILARITY`
-  overlapping keys and all intersecting values are zero, similarities
-  return `1.0` and distances return `0.0`.
+  overlapping usable keys and all intersecting values are zero,
+  similarities return `1.0`. (`euclidean_distance_named` returns `0.0`.)
 - For DEV with XLSX files, ensure `openpyxl` is installed.
 - To get richer shared feature sets, enable `age` and `freq_*` by providing
   the needed inputs/bounds in `config.py`.
+
+
+## Edge cases (important)
+
+### Why cosine can be NaN while Euclidean similarity is defined
+
+Consider two named vectors:
+
+```python
+test_a = {
+  "desc_nonvio_curr": 0.0,
+  "desc_nonvio_past": 0.6667,
+  "severity_trend": 0.1487,
+}
+
+test_b = {
+  "desc_nonvio_curr": 0.0,
+  "desc_nonvio_past": 0.0,
+  "severity_trend": 0.0,
+}
+```
+
+Overlapping keys = 3 → passes `MIN_OVERLAP_FOR_SIMILARITY = 3`.
+
+**Cosine similarity**
+
+Cosine divides by the product of the vector norms.
+
+`test_b` is an all-zero vector on the overlapping keys → its norm is 0.
+
+The cosine denominator collapses → cosine similarity is undefined.
+
+**Result:** `cosine_similarity_named = NaN`.
+
+**Euclidean distance / similarity**
+
+Euclidean distance between a non-zero vector and a zero vector is well-defined.
+
+Distance `d > 0`, so similarity `1 / (1 + d)` is also well-defined.
+
+**Result:** `euclidean_similarity_named ∈ (0, 1)`.
+
+This difference is intentional and mathematically correct, and explains why cosine may be `NaN` while Euclidean similarity is defined for the same inputs.
+
+
+### Distinct similarity cases (named vectors)
+
+After filtering to overlapping feature names and dropping invalid values:
+
+| Case | Behavior |
+|-----|---------|
+| Overlap < `MIN_OVERLAP_FOR_SIMILARITY` | All similarities return **NaN** |
+| All overlapping usable values are 0 on both sides | Similarities return **1.0** (distance = 0.0) |
+| One side all-zero, other not | Cosine / Tanimoto → **NaN** (one norm/denominator collapses) |
+|  | Euclidean distance → defined |
+|  | Euclidean similarity `1 / (1 + d)` → defined |
+| Jaccard-on-keys | Depends on “active keys” above threshold `τ` (often NaN if none) |
+| Normal non-zero overlap | All similarities computed normally |
+
+These rules are enforced consistently across  
+`cosine_similarity_named`, `euclidean_*`, `tanimoto_*`, and `jaccard_similarity_named`.
+
 
 ## License
 MIT
