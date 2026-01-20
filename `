@@ -1,17 +1,14 @@
-## Introduction
-
-This package computes **named sentencing features** (a dictionary of `{feature_name: value}`),
-scores **suitability**, and compares individuals using similarity measures (Cosine, Euclidean, Tanimoto, and jaccard_similarity_named).
-
-All computations follow two core rules:
-
-1) **Skip-if-missing:** features are only computed when inputs are valid (no silent zero-filling).
-2) **Intersection-only similarity:** similarities are computed only on the **shared feature names** between two people.
+# similarity_scoring
+Compute **named sentencing metrics**, score **suitability**, and compare individuals with multiple similarity measures (cosine, Euclidean, Tanimoto/Jaccard, etc.).  
+All metrics are **name‑based** and **skip‑if‑missing** (no fabricated defaults). Similarities are always computed on the **intersection of present feature names**.
 
 ## What this repo contains
 - `config.py` — Paths, column map, defaults, offense lists, **name‑based** metric weights.
 - `compute_metrics.py` — Reads CSV/XLSX, normalizes units, classifies offenses, computes **named features** (skip‑if‑missing).
 - `sentencing_math.py` — Pure math (no I/O): time decomposition, proportions, frequency/trend, rehab, suitability (name‑based).
+- `vector_similarity.py` — Named-vector API (thin re-export): 
+  `cosine_similarity_named`, `euclidean_distance_named`, `euclidean_similarity_named`,
+  `tanimoto_similarity_named`, `jaccard_similarity_named`.
 - `similarity_metrics.py` — Matrix metrics (cosine, euclidean, manhattan, jaccard_binary,
   dice_binary, hamming_binary) **and** named-vector similarities:
   `cosine_similarity_named`, `euclidean_distance_named`, `euclidean_similarity_named`,
@@ -28,7 +25,7 @@ pip install -U pip pandas numpy openpyxl
 
 ## Configure
 Edit `config.py`:
-- `SIMILARITY_DATA_DIR`: optional folder override for local CSV/XLSX files; default `PROD` can read GitHub raw URLs.
+- `CFG_PROFILE`: set `DEV` for local files; default `PROD` can read GitHub raw URLs.
 - `PATHS`: locations for `demographics`, `current_commitments`, `prior_commitments`.
 - `COLS`: column mappings (any `None` disables that metric).
 - `OFFENSE_LISTS`: explicit code lists for `violent` / `nonviolent` (unlisted → `other` by design).
@@ -39,7 +36,7 @@ Edit `config.py`:
   1) If commitment date columns exist and dates are present → computed years = first prior → last current.
   2) If `DEFAULTS["years_elapsed_for_trend"]` is not `None` → use that value instead.
   This affects only the `severity_trend` metric.
-- `MIN_OVERLAP_FOR_SIMILARITY`: minimum number of overlapping, minimum number of overlapping finite (usable) features
+- `MIN_OVERLAP_FOR_SIMILARITY`: minimum number of overlapping, non-missing features
    required to compute cosine / Euclidean / Tanimoto / jaccard_similarity_named (default = 3).
 - `METRIC_WEIGHTS`: **dict by name**; only present features contribute to the score.
    Note: The weight for age is now 1.0 (non-zero) so age contributes to suitability.
@@ -51,7 +48,7 @@ Edit `config.py`:
 
 ## Quick start (CLI)
 Print features & suitability for a single ID, and optionally compare two IDs with
-cosine / Euclidean / Tanimoto / jaccard_similarity_named:
+cosine / Euclidean / Tanimoto / Jaccard-on-keys:
 ```bash
 python run_similarity.py --cdcr-id A1234
 python run_similarity.py --cdcr-id A1234 --compare-id B5678
@@ -154,7 +151,7 @@ import config as CFG
 import compute_metrics as cm
 import sentencing_math as sm
 
-from similarity_metrics import (
+from vector_similarity import (
     cosine_similarity_named,
     euclidean_distance_named,
     euclidean_similarity_named,
@@ -238,7 +235,7 @@ print("\nDone.")
 
 ## Edge cases (important)
 
-### Edge cases and when similarities become NaN
+### Why cosine can be NaN while Euclidean similarity is defined
 
 Consider two named vectors:
 
@@ -281,24 +278,21 @@ This difference is intentional and mathematically correct, and explains why cosi
 
 ### Distinct similarity cases (named vectors)
 
-**Named vectors** simply mean a Python dictionary mapping each feature name to a numeric value, e.g.
-`{"age": 0.42, "severity_trend": 0.18}`.
+After filtering to overlapping feature names and dropping invalid values:
 
-After restricting to the **shared feature names**, and skipping invalid (non-finite) values:
+| Case | Behavior |
+|-----|---------|
+| Overlap < `MIN_OVERLAP_FOR_SIMILARITY` | All similarities return **NaN** |
+| All overlapping usable values are 0 on both sides | Similarities return **1.0** (distance = 0.0) |
+| One side all-zero, other not | Cosine / Tanimoto → **NaN** (one norm/denominator collapses) |
+|  | Euclidean distance → defined |
+|  | Euclidean similarity `1 / (1 + d)` → defined |
+| Jaccard-on-keys | Depends on “active keys” above threshold `τ` (often NaN if none) |
+| Normal non-zero overlap | All similarities computed normally |
 
-| Case | Cosine | Euclidean distance | Euclidean similarity `1/(1+d)` | Tanimoto | jaccard_similarity_named |
-|---|---:|---:|---:|---:|---:|
-| Shared features `< MIN_OVERLAP_FOR_SIMILARITY` | NaN | NaN | NaN | NaN | NaN |
-| All overlapping usable values are 0 on both sides | 1.0 | 0.0 | 1.0 | 1.0 | 1.0 |
-| One side all-zero, other not | NaN (norm=0) | defined | defined | NaN (denom collapses) | depends on active keys |
-| Normal overlap with usable values | defined | defined | defined | defined | defined |
-| No “active” keys above threshold `τ` | n/a | n/a | n/a | n/a | NaN (no active overlap) |
-| Active-key overlap `< MIN_OVERLAP_FOR_SIMILARITY` | n/a | n/a | n/a | n/a | NaN |
+These rules are enforced consistently across  
+`cosine_similarity_named`, `euclidean_*`, `tanimoto_*`, and `jaccard_similarity_named`.
 
-Notes:
-- For **Cosine/Tanimoto**, if either side becomes all-zero over the shared usable features, the denominator collapses → `NaN`.
-- For **jaccard_similarity_named**, we first convert each vector into a set of “active” feature names where `value > τ`, then compute Jaccard on those sets.
- 
 
 ## License
 MIT
